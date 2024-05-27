@@ -1,2 +1,2 @@
-FROM vital987/chrome-novnc:latest
+FROM alone/chrome-novnc:latest
 
