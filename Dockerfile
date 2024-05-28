@@ -17,13 +17,15 @@ ENV	VNC_PASS="CHANGE_IT" \
 #NoVNC Port
 	NOVNC_PORT=$PORT \
 	PORT=8080 \
+#Config
+	HOMEPAGE=https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk \
 #Heroku No-Sleep Mode
 	NO_SLEEP=false \
 #Locale
 	LANG=en_US.UTF-8 \
 	LANGUAGE=en_US.UTF-8 \
 	LC_ALL=C.UTF-8 \
-	TZ="Asia/Kolkata"
+	TZ="Asia/Shanghai"
 
 COPY assets/ /
 
@@ -37,6 +39,7 @@ RUN	apk update && \
 # Wipe Temp Files
 	apk del build-base curl wget unzip tzdata openssl && \
 	rm -rf /var/cache/apk/* /tmp/*
+
 ENTRYPOINT ["supervisord", "-l", "/var/log/supervisord.log", "-c"]
 
 CMD ["/config/supervisord.conf"]

@@ -1,19 +1,40 @@
 name: Build and Push Docker Image
 on:
   workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to build
+        required: false
+        default: ''
   push:
     branches:
       - master
+      - grass
   pull_request:
     branches:
       - master
+      - grass
 
 jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
+
+    - name: Determine branch
+      id: vars
+      run: |
+        branch=${{ github.event.inputs.branch || 'master' }}
+        echo "::set-output name=branch::$branch"
+        if [ "$brancs" = "master" ]; then
+          echo "::set-output name=tag::latest"
+        else
+          echo "::set-output name=tag::$branch"
+        fi
+
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vars.outputs.branch }}
       
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -33,4 +54,4 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/chrome-novnc:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/chrome-novnc:${{ steps.vars.outputs.tag }}
