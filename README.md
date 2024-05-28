@@ -25,7 +25,7 @@
 |NO_SLEEP      |Prevent app from sleeping|Heroku specific|
 
 
-## For [GetGrass](https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk)
+## 🌿 For [GetGrass](https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk)
 > Grass为用户提供了一种利用闲置的网络资源进行挖矿的新途径。以下Chrome镜像专为Grass定制，内置Grass的Chrome扩展，帮助您轻松开始在Grass上的挖矿活动。
 ```sh
 docker run \
