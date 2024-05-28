@@ -1,11 +1,6 @@
 name: Build and Push Docker Image
 on:
   workflow_dispatch:
-    inputs:
-      branch:
-        description: Branch to build
-        required: false
-        default: ''
   push:
     branches:
       - master
@@ -23,7 +18,7 @@ jobs:
       - name: Determine branch
         id: vars
         run: |
-          branch=${{ github.event.inputs.branch || 'master' }}
+          branch=$(echo ${GITHUB_REF#refs/heads/})
           echo "::set-output name=branch::$branch"
           if [ "$brancs" = "master" ]; then
             echo "::set-output name=tag::latest"
