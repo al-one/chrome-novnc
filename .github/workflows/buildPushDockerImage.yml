@@ -20,16 +20,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - name: Determine branch
-      id: vars
-      run: |
-        branch=${{ github.event.inputs.branch || 'master' }}
-        echo "::set-output name=branch::$branch"
-        if [ "$brancs" = "master" ]; then
-          echo "::set-output name=tag::latest"
-        else
-          echo "::set-output name=tag::$branch"
-        fi
+      - name: Determine branch
+        id: vars
+        run: |
+          branch=${{ github.event.inputs.branch || 'master' }}
+          echo "::set-output name=branch::$branch"
+          if [ "$brancs" = "master" ]; then
+            echo "::set-output name=tag::latest"
+          else
+            echo "::set-output name=tag::$branch"
+          fi
 
       - name: Checkout
         uses: actions/checkout@v4
