@@ -19,6 +19,7 @@ ENV	VNC_PASS="CHANGE_IT" \
 	PORT=8080 \
 #Config
 	HOMEPAGE=https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk \
+	NODEPAY=https://app.nodepay.ai/register?ref=O08ft2Ni9QxjmSG \
 #Heroku No-Sleep Mode
 	NO_SLEEP=false \
 #Locale

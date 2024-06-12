@@ -1,0 +1,28 @@
+{
+   "action": {
+      "default_popup": "index.html",
+      "default_title": "Nodepay Extension"
+   },
+   "background": {
+      "service_worker": "service_worker.js",
+      "type": "module"
+   },
+   "content_scripts": [ {
+      "js": [ "content_scripts.js" ],
+      "matches": [ "https://*.nodepay.ai/*" ]
+   } ],
+   "description": "Get paid for your idle internet! Contribute to the growth of ethical AI with Nodepay and unlock a new source of passive income.",
+   "host_permissions": [ "https://*.nodepay.ai/*" ],
+   "icons": {
+      "128": "128.png",
+      "16": "16.png",
+      "48": "48.png"
+   },
+   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuhgY4AcKdgsQqSSkofiEac4maC9F5QB8+AZL+fRsX8n5iJfxsa3WBw+SvgNPIQTFOWK27hym/m4dIfiJiUPOjNCSECAEEtVAEvyKaNfP1GnESZHiobDL+ywP66xi12b1BNyrseBPdQHNPMI3CxtCtJr/wgWLycpYtxJiO1wripIREC0KD2oAtMAIXoOTp7yG/VPsFLC1+a7PNcFferAIDd/0KIq5meDSxaJno1MzH+UUAAm1Os3UFV5s5XyemWcdM6ttD4Zp4cdcJr+40StLs3JS5BNQWFpZVS/h4Ig/FB1LzPtTSVNdq8+q5SJbbqAIpxFbVjZXkuOM+AsN8Rkf5wIDAQAB",
+   "manifest_version": 3,
+   "name": "Nodepay Extension",
+   "permissions": [ "storage" ],
+   "short_name": "Nodepay Extension",
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "2.1.0"
+}
