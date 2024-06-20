@@ -18,6 +18,7 @@ ENV	VNC_PASS="CHANGE_IT" \
 	NOVNC_PORT=$PORT \
 	PORT=8080 \
 #Config
+    GRASS_NODE=grass-community \
 	HOMEPAGE=https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk \
 	NODEPAY=https://app.nodepay.ai/register?ref=O08ft2Ni9QxjmSG \
 #Heroku No-Sleep Mode
