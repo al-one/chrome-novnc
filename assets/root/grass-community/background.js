@@ -6,12 +6,6 @@
 /* eslint-disable no-restricted-syntax */
 /* eslint-disable no-use-before-define */
 /* eslint-disable camelcase */
-/*
-    You'll also need to modify the "websocket" variable in the
-    initialize() function in this script with the appropriate
-    connection URI for your host. For simple testing, the default
-    connection string of "ws://127.0.0.1:4343" should be fine.
-*/
 
 const getUnixTimestamp = () => Math.floor(Date.now() / 1000);
 
@@ -60,8 +54,8 @@ const RESPONSE_COOKIE_TIMEOUT = 5 * 1000; // 5 sec
 
 const CHROME_PING_INTERVAL = 3 * 1000;
 const WEBSOCKET_URLS = [
-  "wss://proxy.wynd.network:4650",
-  "wss://proxy.wynd.network:4444",
+  "wss://proxy2.wynd.network:4650",
+  "wss://proxy2.wynd.network:4444",
 ];
 // const WEBSOCKET_URLS = ["wss://proxy.dev.wynd.network"];
 // const WEBSOCKET_URLS = ["ws://127.0.0.1"];
@@ -866,17 +860,6 @@ chrome.webRequest.onErrorOccurred.addListener(
 )
 
 async function initialize() {
-  // Replace the below connection URI with whatever
-  // the host details you're using are.
-  // ** Ideal setup is the following **
-  // Have Nginx doing a reverse-proxy (proxy_pass) to
-  // the CursedChrome server with a HTTPS cert setup.
-  // For SSL/TLS WebSockets, instead of https:// you need
-  // to use wss:// as the protocol. For maximum stealth,
-  // setting the WebSocket port to be the standard
-  // TLS/SSL port (this will make sure tools like little
-  // snitch don't alert on a new port connection from Chrome).
-
   // Do not allow the websocket to run if permissions & browser id is blank
   const browserId = await getLocalStorage(BROWSER_ID_KEY);
   if (!browserId) {
