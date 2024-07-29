@@ -1,14 +1,14 @@
 {
-  "version": "4.26.1",
-  "pub_date": "2024-07-22T13:39:14Z",
+  "version": "4.26.2",
+  "pub_date": "2024-07-23T14:14:34Z",
   "content_length": {
     "macos": "0",
     "windows": "0",
     "linux": "0"
   },
   "links": {
-    "macos": "https://files.getgrass.io/file/grass-extension-upgrades/extension-latest/grass-community-node-macos-4.26.1.zip",
-    "windows": "https://files.getgrass.io/file/grass-extension-upgrades/extension-latest/grass-community-node-windows-4.26.1.zip",
-    "linux": "https://files.getgrass.io/file/grass-extension-upgrades/extension-latest/grass-community-node-linux-4.26.1.zip"
+    "macos": "https://files.getgrass.io/file/grass-extension-upgrades/extension-latest/grass-community-node-macos-4.26.2.zip",
+    "windows": "https://files.getgrass.io/file/grass-extension-upgrades/extension-latest/grass-community-node-windows-4.26.2.zip",
+    "linux": "https://files.getgrass.io/file/grass-extension-upgrades/extension-latest/grass-community-node-linux-4.26.2.zip"
   }
 }
