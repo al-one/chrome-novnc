@@ -40,7 +40,7 @@ RUN	apk add supervisor xvfb x11vnc websockify openbox chromium && \
 	cp /usr/share/zoneinfo/$TZ /etc/localtime && \
 	echo $TZ > /etc/timezone && \
 # Wipe Temp Files
-	apk del build-base curl wget unzip tzdata openssl && \
+	apk del build-base curl wget unzip tzdata && \
 	rm -rf /var/cache/apk/* /tmp/*
 
 ENTRYPOINT ["/entrypoint.sh", "supervisord", "-l", "/var/log/supervisord.log", "-c"]
