@@ -36,12 +36,13 @@ RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.l
 RUN apt install -y tzdata ca-certificates openssl python3 python3-requests libnss3 libasound2 fonts-noto fonts-noto-cjk
 RUN	apt install -y supervisor xvfb x11vnc websockify openbox chromium-browser && \
     ln -sf /usr/bin/chromium-browser /usr/bin/chromium && \
+    dpkg -i /root/grass-4.28.2-amd64.deb && \
     sed -i "s/^autostart=.*/autostart=true/" /config/supervisor/7-grass.conf && \
 # noVNC SSL certificate
 	openssl req -new -newkey rsa:4096 -days 36500 -nodes -x509 -subj "/C=IN/O=Dis/CN=www.google.com" -keyout /etc/ssl/novnc.key -out /etc/ssl/novnc.cert > /dev/null 2>&1 && \
 # TimeZone
 	cp /usr/share/zoneinfo/$TZ /etc/localtime && \
-	echo $TZ > /etc/timezone \
+	echo $TZ > /etc/timezone
 
 ENTRYPOINT ["/entrypoint.sh", "supervisord", "-l", "/var/log/supervisord.log", "-c"]
 
