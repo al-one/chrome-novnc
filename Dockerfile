@@ -1,8 +1,8 @@
 FROM alpine:3.19.1
 
-LABEL AboutImage "Alpine_Chromium_NoVNC"
+LABEL AboutImage="Chromium NoVNC"
 
-LABEL Maintainer "Alone <hi@anlo.ng>"
+LABEL Maintainer="Alone <hi@anlo.ng>"
 
 #VNC Server Password
 ENV	VNC_PASS="CHANGE_IT" \
@@ -19,7 +19,7 @@ ENV	VNC_PASS="CHANGE_IT" \
 	PORT=8080 \
 #Config
     GRASS_NODE=grass-community \
-	HOMEPAGE=https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk \
+	HOMEPAGE="https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk" \
 #Heroku No-Sleep Mode
 	NO_SLEEP=false \
 #Locale
