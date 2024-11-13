@@ -1,0 +1,48 @@
+FROM ubuntu:22.04
+
+LABEL AboutImage="Chromium NoVNC"
+
+LABEL Maintainer="Alone <hi@anlo.ng>"
+
+#VNC Server Password
+ENV	VNC_PASS="CHANGE_IT" \
+#VNC Server Title(w/o spaces)
+	VNC_TITLE="Chromium" \
+#VNC Resolution(720p is preferable)
+	VNC_RESOLUTION="1280x720" \
+#VNC Shared Mode
+	VNC_SHARED=false \
+#Local Display Server Port
+	DISPLAY=:0 \
+#NoVNC Port
+	NOVNC_PORT=$PORT \
+	PORT=8080 \
+#Config
+    GRASS_NODE=grass-community \
+	HOMEPAGE="https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk" \
+#Heroku No-Sleep Mode
+	NO_SLEEP=false \
+#Locale
+	LANG=en_US.UTF-8 \
+	LANGUAGE=en_US.UTF-8 \
+	LC_ALL=C.UTF-8 \
+	TZ="Asia/Shanghai"
+
+COPY assets/ /
+RUN chmod a+x /entrypoint.sh
+
+RUN sed -i 's@//.*archive.ubuntu.com@//mirrors.ustc.edu.cn@g' /etc/apt/sources.list && \
+    apt update
+RUN apt install tzdata ca-certificates openssl python3 python3-requests libnss3 libasound2 fonts-noto fonts-noto-cjk
+RUN	apt install supervisor xvfb x11vnc websockify openbox chromium-browser && \
+    ln -sf /usr/bin/chromium-browser /usr/bin/chromium && \
+    sed -i "s/^autostart=.*/autostart=true/" /config/supervisor/7-grass.conf && \
+# noVNC SSL certificate
+	openssl req -new -newkey rsa:4096 -days 36500 -nodes -x509 -subj "/C=IN/O=Dis/CN=www.google.com" -keyout /etc/ssl/novnc.key -out /etc/ssl/novnc.cert > /dev/null 2>&1 && \
+# TimeZone
+	cp /usr/share/zoneinfo/$TZ /etc/localtime && \
+	echo $TZ > /etc/timezone \
+
+ENTRYPOINT ["/entrypoint.sh", "supervisord", "-l", "/var/log/supervisord.log", "-c"]
+
+CMD ["/config/supervisord.conf"]
