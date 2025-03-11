@@ -36,7 +36,7 @@ RUN chmod a+x /entrypoint.sh
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 RUN	apk add tzdata ca-certificates curl wget openssl bash python3 py3-requests sed unzip nss alsa-lib font-noto font-noto-cjk
-RUN set -eux; \
+RUN set -x; \
     cd /root; \
     wget https://files.getgrass.io/file/grass-extension-upgrades/extension-latest/$GRASS_COMMUNITY_FILE -O grass-community.zip; \
     unzip grass-community.zip; \

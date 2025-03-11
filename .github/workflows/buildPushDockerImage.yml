@@ -38,11 +38,28 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to QCloud CR
+        uses: docker/login-action@v3
+        with:
+          registry: ccr.ccs.tencentyun.com
+          username: ${{ secrets.QCLOUD_CR_USER }}
+          password: ${{ secrets.QCLOUD_CR_PASS }}
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/chrome-novnc:${{ steps.vars.outputs.tag }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/chrome-novnc:${{ steps.vars.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/chrome:${{ steps.vars.outputs.tag }}
+            ccr.ccs.tencentyun.com/${{ secrets.DOCKER_USERNAME }}/grass:${{ steps.vars.outputs.tag }}
