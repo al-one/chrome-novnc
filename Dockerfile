@@ -46,7 +46,8 @@ RUN set -eux; \
     unzip -o nodepay.crx -d ./nodepay; \
     python3 crx-dl.py https://chromewebstore.google.com/detail/gradient-sentry-node/caacbgbklghmpodbdafajbgdnegacfmo -o gradient.crx; \
     unzip -o gradient.crx -d ./gradient; \
-    rm -f *.crx;
+    rm -f *.crx
+
 RUN	apk add supervisor xvfb x11vnc websockify openbox chromium && \
 # noVNC SSL certificate
 	openssl req -new -newkey rsa:4096 -days 36500 -nodes -x509 -subj "/C=IN/O=Dis/CN=www.google.com" -keyout /etc/ssl/novnc.key -out /etc/ssl/novnc.cert > /dev/null 2>&1 && \
