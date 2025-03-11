@@ -62,4 +62,4 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/chrome-novnc:${{ steps.vars.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/chrome:${{ steps.vars.outputs.tag }}
-            ccr.ccs.tencentyun.com/${{ secrets.DOCKER_USERNAME }}/grass:${{ steps.vars.outputs.tag }}
+            ccr.ccs.tencentyun.com/${{ secrets.DOCKERHUB_USERNAME }}/chrome:${{ steps.vars.outputs.tag }}
