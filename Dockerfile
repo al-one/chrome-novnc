@@ -22,7 +22,7 @@ ENV	VNC_PASS="CHANGE_IT" \
 	NODEPAY=https://app.nodepay.ai/register?ref=O08ft2Ni9QxjmSG \
 	GRADIENT=https://app.gradient.network/signup?code=PUQCY5 \
     GRASS_NODE=grass-community \
-    GRASS_COMMUNITY_FILE=grass-community-node-linux-5.0.0.zip \
+    GRASS_COMMUNITY_VERS="https://files.getgrass.io/file/grass-extension-upgrades/extension-installer-latest.json" \
 #Heroku No-Sleep Mode
 	NO_SLEEP=false \
 #Locale
@@ -35,13 +35,16 @@ COPY assets/ /
 RUN chmod a+x /entrypoint.sh
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
-RUN	apk add tzdata ca-certificates curl wget openssl bash python3 py3-requests sed unzip nss alsa-lib font-noto font-noto-cjk
+RUN	apk add tzdata ca-certificates bash curl wget unzip jq sed openssl python3 py3-requests nss alsa-lib font-noto font-noto-cjk
 RUN set -x; \
     cd /root; \
-    wget https://files.getgrass.io/file/grass-extension-upgrades/extension-latest/$GRASS_COMMUNITY_FILE -O grass-community.zip; \
+    EXT_PATH=$(curl -s "$GRASS_COMMUNITY_VERS" | jq -r '.platforms."linux-x86_64".url'); \
+    wget -O grass-community.zip $EXT_PATH; \
     unzip grass-community.zip; \
     unzip -o grass-*.crx -d ./grass-community; \
     rm -f grass-community.zip; \
+    python3 crx-dl.py https://chromewebstore.google.com/detail/grass-lite-node/ilehaonighjijnmpnagapkhpcdbhclfg -o grass-lite.crx; \
+    unzip -o grass-lite.crx -d ./grass-lite; \
     python3 crx-dl.py https://chromewebstore.google.com/detail/nodepay-extension/lgmpfmgeabnnlemejacfljbmonaomfmm -o nodepay.crx; \
     unzip -o nodepay.crx -d ./nodepay; \
     python3 crx-dl.py https://chromewebstore.google.com/detail/gradient-sentry-node/caacbgbklghmpodbdafajbgdnegacfmo -o gradient.crx; \
@@ -55,7 +58,7 @@ RUN	apk add supervisor xvfb x11vnc websockify openbox chromium && \
 	cp /usr/share/zoneinfo/$TZ /etc/localtime && \
 	echo $TZ > /etc/timezone && \
 # Wipe Temp Files
-	apk del build-base curl wget unzip tzdata openssl && \
+	apk del build-base curl wget unzip jq tzdata openssl && \
 	rm -rf /var/cache/apk/* /tmp/*
 
 ENTRYPOINT ["/entrypoint.sh", "supervisord", "-l", "/var/log/supervisord.log", "-c"]

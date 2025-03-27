@@ -5,6 +5,8 @@ on:
     branches:
       - master
       - grass
+  schedule:
+    - cron: "0 20 */3 * *"
 
 jobs:
   docker:

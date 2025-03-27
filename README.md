@@ -28,7 +28,7 @@ docker run \
 ## 🌱 For [GetGrass](https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk)
 
 Grass为用户提供了一种利用闲置的网络资源进行挖矿的新途径。以下Chrome镜像专为Grass定制，内置Grass的Chrome扩展，帮助您轻松开始在Grass上的挖矿活动。
-> 🚀 本镜像默认使用Grass社区节点，可以获得1.25倍的积分。通过指定`GRASS_NODE=grass-extension`环境变量可以切换默认扩展。
+> 🚀 本镜像默认使用Grass社区节点，可以获得1.25倍的积分。通过指定`GRASS_NODE=grass-lite`环境变量可以切换默认扩展。
 
 ```sh
 docker run \
