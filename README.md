@@ -1,36 +1,9 @@
-# Chromium with NoVNC
+# Chrome for Grass
 
-## Installation
-- ### Heroku
-    [![Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/al-one/chrome-novnc)
-
-- ### Manual
-```sh
-docker run \
-    --name chrome-novnc \
-    -p 8080:8080 \
-    -e VNC_PASS=CHANGE_IT \
-    -d alone/chrome-novnc:latest
-```
-
-## Environment variables:
-|VARIABLE      |DESCRIPTION              |DEFAULT VALUE  |
-|-------------:|:------------------------|:-------------:|
-|VNC_PASS      |VNC Password             |CHANGE_IT      |
-|VNC_TITLE     |VNC Session Title        |Chromium       |
-|VNC_SHARED    |VNC Shared Mode          |false          |
-|VNC_RESOLUTION|VNC Resolution           |1280x720       |
-|PORT          |NoVNC HTTPS Port         |Heroku specific|
-|APP_NAME      |Name of the app          |Heroku specific|
-|NO_SLEEP      |Prevent app from sleeping|Heroku specific|
-
-
-## 🌱 For [GetGrass](https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk)
-
-Grass为用户提供了一种利用闲置的网络资源进行挖矿的新途径。以下Chrome镜像专为Grass定制，内置Grass的Chrome扩展，帮助您轻松开始在Grass上的挖矿活动。
+[Grass](https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk)为用户提供了一种利用闲置的网络资源进行挖矿的新途径。以下Chrome镜像专为Grass定制，内置Grass的Chrome扩展，帮助您轻松开始在Grass上的挖矿活动。
 > 🚀 本镜像默认使用Grass社区节点，可以获得1.25倍的积分。通过指定`GRASS_NODE=grass-lite`环境变量可以切换默认扩展。
 
-```sh
+```bash
 docker run \
     --name chrome-novnc \
     --restart unless-stopped \
@@ -38,7 +11,7 @@ docker run \
     -e VNC_PASS=CHANGE_IT \
     -e VNC_RESOLUTION=1440x880 \
     -v /opt/containerd/lib/chromium:/root/.config/chromium \
-    -d alone/chrome-novnc:grass
+    -d ghcr.nju.edu.cn/al-one/chrome:grass
 ```
 
 操作步骤:
@@ -48,3 +21,9 @@ docker run \
 4. 填完注册信息后，如果注册按钮灰色不可点击，需要多刷新几次或者使用特殊网络环境(人机验证需要)
 5. 点击Chrome地址栏后面的扩展按钮，找到`Grass Community Node`/`Grass Extension`
 6. 点击`LOGIN`，并登陆刚才注册的账号即可
+
+## 邀请链接
+- [Grass](https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk)
+- [NodePay](https://app.nodepay.ai/register?ref=O08ft2Ni9QxjmSG)
+- [Gradient](https://app.gradient.network/signup?code=PUQCY5)
+- DAWN Referral code: `0d7p58io`

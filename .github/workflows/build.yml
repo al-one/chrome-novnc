@@ -48,13 +48,6 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Login to QCloud CR
-        uses: docker/login-action@v3
-        with:
-          registry: ccr.ccs.tencentyun.com
-          username: ${{ secrets.QCLOUD_CR_USER }}
-          password: ${{ secrets.QCLOUD_CR_PASS }}
-
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
@@ -64,4 +57,3 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/chrome-novnc:${{ steps.vars.outputs.tag }}
             ghcr.io/${{ github.repository_owner }}/chrome:${{ steps.vars.outputs.tag }}
-            ccr.ccs.tencentyun.com/${{ secrets.DOCKERHUB_USERNAME }}/chrome:${{ steps.vars.outputs.tag }}

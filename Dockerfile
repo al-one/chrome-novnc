@@ -31,6 +31,8 @@ ENV	VNC_PASS="CHANGE_IT" \
 	LC_ALL=C.UTF-8 \
 	TZ="Asia/Shanghai"
 
+ENV LOAD_EXTENSION=/root/${GRASS_NODE},/root/nodepay,/root/gradient,/root/dawn
+
 COPY assets/ /
 RUN chmod a+x /entrypoint.sh
 
@@ -49,6 +51,8 @@ RUN set -x; \
     unzip -o nodepay.crx -d ./nodepay; \
     python3 crx-dl.py https://chromewebstore.google.com/detail/gradient-sentry-node/caacbgbklghmpodbdafajbgdnegacfmo -o gradient.crx; \
     unzip -o gradient.crx -d ./gradient; \
+    python3 crx-dl.py https://chromewebstore.google.com/detail/dawn-validator-chrome-ext/fpdkjdnhkakefebpekbdhillbhonfjjp -o dawn.crx; \
+    unzip -o dawn.crx -d ./dawn; \
     rm -f *.crx
 
 RUN	apk add supervisor xvfb x11vnc websockify openbox chromium && \

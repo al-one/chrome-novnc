@@ -1,14 +1,10 @@
-version: '3.4'
-
 services:
   chrome-novnc:
     container_name: chrome-novnc
-    image: alone/chrome-novnc:grass
+    image: ghcr.nju.edu.cn/al-one/chrome:grass
     ports:
-      - "${HOST_PORT-8080}:8080/tcp"
+      - "${HOST_PORT-8081}:8080/tcp"
     environment:
       - VNC_PASS=${VNC_PASS-CHANGE_IT}
-      - VNC_TITLE=${VNC_TITLE-Chromium}
-      - VNC_SHARED=${VNC_SHARED-false}
-      - VNC_RESOLUTION=${VNC_RESOLUTION-1280x720}
-    restart: always
+      - VNC_RESOLUTION=${VNC_RESOLUTION-1440x880}
+    restart: unless-stopped
