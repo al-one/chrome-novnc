@@ -5,7 +5,7 @@ services:
     ports:
       - "${HOST_PORT-8081}:8080"
     volumes:
-      - ./data:/root/.config/chromium
+      - .:/root/.config/chromium
     environment:
       - VNC_PASS=${VNC_PASS-CHANGE_IT}
       - VNC_RESOLUTION=${VNC_RESOLUTION-1440x880}
