@@ -12,4 +12,4 @@ services:
       - GRASS_NODE=grass-lite
     restart: always
     healthcheck:
-      test: [CMD-SHELL, curl -I localhost:8080 || exit 1]
+      test: [CMD-SHELL, wget --spider --no-verbose localhost:8080 || exit 1]
