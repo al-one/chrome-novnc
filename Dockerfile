@@ -1,8 +1,4 @@
-FROM alpine:3.19.1
-
-LABEL AboutImage "Alpine_Chromium_NoVNC"
-
-LABEL Maintainer "Alone <hi@anlo.ng>"
+FROM alpine:3
 
 #VNC Server Password
 ENV	VNC_PASS="CHANGE_IT" \
@@ -23,6 +19,7 @@ ENV	VNC_PASS="CHANGE_IT" \
 	GRADIENT=https://app.gradient.network/signup?code=PUQCY5 \
     GRASS_NODE=grass-community \
     GRASS_COMMUNITY_VERS="https://files.getgrass.io/file/grass-extension-upgrades/extension-installer-latest.json" \
+    LOAD_EXTENSION=/root/nodepay,/root/gradient,/root/dawn \
 #Heroku No-Sleep Mode
 	NO_SLEEP=false \
 #Locale
@@ -31,12 +28,10 @@ ENV	VNC_PASS="CHANGE_IT" \
 	LC_ALL=C.UTF-8 \
 	TZ="Asia/Shanghai"
 
-ENV LOAD_EXTENSION=/root/${GRASS_NODE},/root/nodepay,/root/gradient,/root/dawn
-
 COPY assets/ /
 RUN chmod a+x /entrypoint.sh
 
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
+# RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 RUN	apk add tzdata ca-certificates bash curl wget unzip jq sed openssl python3 py3-requests nss alsa-lib font-noto font-noto-cjk
 RUN set -x; \
     cd /root; \
