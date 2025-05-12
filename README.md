@@ -3,9 +3,19 @@
 [Grass](https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk)为用户提供了一种利用闲置的网络资源进行挖矿的新途径。以下Chrome镜像专为Grass定制，内置Grass的Chrome扩展，帮助您轻松开始在Grass上的挖矿活动。
 > 🚀 本镜像默认使用Grass社区节点，可以获得1.25倍的积分。通过指定`GRASS_NODE=grass-lite`环境变量可以切换默认扩展。
 
-```bash
+### 使用 Docker Compose
+```shell
+mkdir -p /opt/containerd/lib/chromium
+cd /opt/containerd/lib/chromium
+wget https://raw.githubusercontent.com/al-one/chrome-novnc/refs/heads/grass/docker-compose.yml
+sed -i 's/CHANGE_IT/YOUR_PASSWORD/' docker-compose.yml
+docker compose up -d --pull always
+```
+
+### 使用 Docker run
+```shell
 docker run \
-    --name chrome-novnc \
+    --name chrome \
     --restart unless-stopped \
     -p 8081:8080 \
     -e VNC_PASS=CHANGE_IT \

@@ -1,10 +1,14 @@
 services:
-  chrome-novnc:
-    container_name: chrome-novnc
+  chrome:
+    container_name: chrome
     image: ghcr.nju.edu.cn/al-one/chrome:grass
     ports:
-      - "${HOST_PORT-8081}:8080/tcp"
+      - "${HOST_PORT-8081}:8080"
+    volumes:
+      - ./data:/root/.config/chromium
     environment:
       - VNC_PASS=${VNC_PASS-CHANGE_IT}
       - VNC_RESOLUTION=${VNC_RESOLUTION-1440x880}
     restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, curl -I localhost:8080 || exit 1]
