@@ -9,6 +9,7 @@ services:
     environment:
       - VNC_PASS=${VNC_PASS-CHANGE_IT}
       - VNC_RESOLUTION=${VNC_RESOLUTION-1440x880}
-    restart: unless-stopped
+      - GRASS_NODE=grass-lite
+    restart: always
     healthcheck:
       test: [CMD-SHELL, curl -I localhost:8080 || exit 1]
