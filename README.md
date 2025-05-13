@@ -33,7 +33,12 @@ docker run \
 6. 点击`LOGIN`，并登陆刚才注册的账号即可
 
 ## 邀请链接
+> 以下扩展均已预装
 - [Grass](https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk)
 - [NodePay](https://app.nodepay.ai/register?ref=O08ft2Ni9QxjmSG)
 - [Gradient](https://app.gradient.network/signup?code=PUQCY5)
+- [Cryplex](https://app.cryplex.ai/dashboard?ref=ke8dwt)
+- [SolixDepin](https://dashboard.solixdepin.net/sign-up?ref=jIGS5oBx)
 - DAWN Referral code: `0d7p58io`
+
+![chrome novnc](https://github.com/user-attachments/assets/a6a3cc9c-6f0a-46df-8dd5-8b087336664d)
