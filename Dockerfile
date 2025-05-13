@@ -17,9 +17,11 @@ ENV	VNC_PASS="CHANGE_IT" \
 	HOMEPAGE=https://app.getgrass.io/register/?referralCode=IlJGw0ovdrhi_mk \
 	NODEPAY=https://app.nodepay.ai/register?ref=O08ft2Ni9QxjmSG \
 	GRADIENT=https://app.gradient.network/signup?code=PUQCY5 \
+	CRYPLEX=https://app.cryplex.ai/dashboard?ref=ke8dwt \
+	SOLIXDEPIN=https://dashboard.solixdepin.net/sign-up?ref=jIGS5oBx \
     GRASS_NODE=grass-community \
     GRASS_COMMUNITY_VERS="https://files.getgrass.io/file/grass-extension-upgrades/extension-installer-latest.json" \
-    LOAD_EXTENSION=/root/nodepay,/root/gradient,/root/dawn \
+    LOAD_EXTENSION=/root/nodepay,/root/gradient,/root/dawn,/root/cryplex,/root/okx \
 #Heroku No-Sleep Mode
 	NO_SLEEP=false \
 #Locale
@@ -48,6 +50,10 @@ RUN set -x; \
     unzip -o gradient.crx -d ./gradient; \
     python3 crx-dl.py https://chromewebstore.google.com/detail/dawn-validator-chrome-ext/fpdkjdnhkakefebpekbdhillbhonfjjp -o dawn.crx; \
     unzip -o dawn.crx -d ./dawn; \
+    python3 crx-dl.py https://chromewebstore.google.com/detail/cryplex-ai-storage-node/mpneoffefkhpfimnfmikkfgehgdahcdc -o cryplex.crx; \
+    unzip -o cryplex.crx -d ./cryplex; \
+    python3 crx-dl.py https://chromewebstore.google.com/detail/okx-wallet/mcohilncbfahbmgdjkbpemcciiolgcge -o okx.crx; \
+    unzip -o okx.crx -d ./okx; \
     rm -f *.crx
 
 RUN	apk add supervisor xvfb x11vnc websockify openbox chromium && \
@@ -57,9 +63,8 @@ RUN	apk add supervisor xvfb x11vnc websockify openbox chromium && \
 	cp /usr/share/zoneinfo/$TZ /etc/localtime && \
 	echo $TZ > /etc/timezone && \
 # Wipe Temp Files
-	apk del build-base curl wget unzip jq tzdata openssl && \
+	apk del build-base wget jq tzdata openssl && \
 	rm -rf /var/cache/apk/* /tmp/*
 
 ENTRYPOINT ["/entrypoint.sh", "supervisord", "-l", "/var/log/supervisord.log", "-c"]
-
 CMD ["/config/supervisord.conf"]
