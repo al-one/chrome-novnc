@@ -6,7 +6,7 @@ on:
       - master
       - grass
   schedule:
-    - cron: "0 20 */3 * *"
+    - cron: "0 20 */5 * *"
 
 jobs:
   docker:
