@@ -1,8 +1,4 @@
-FROM alpine:3.19.1
-
-LABEL AboutImage "Alpine_Chromium_NoVNC"
-
-LABEL Maintainer "Apurv Vyavahare <apurvvyavahare@gmail.com>"
+FROM alpine:3
 
 #VNC Server Password
 ENV	VNC_PASS="CHANGE_IT" \
@@ -23,9 +19,10 @@ ENV	VNC_PASS="CHANGE_IT" \
 	LANG=en_US.UTF-8 \
 	LANGUAGE=en_US.UTF-8 \
 	LC_ALL=C.UTF-8 \
-	TZ="Asia/Kolkata"
+	TZ="Asia/Shanghai"
 
 COPY assets/ /
+RUN chmod a+x /entrypoint.sh
 
 RUN	apk update && \
 	apk add --no-cache tzdata ca-certificates supervisor curl wget openssl bash python3 py3-requests sed unzip xvfb x11vnc websockify openbox chromium nss alsa-lib font-noto font-noto-cjk && \
@@ -35,8 +32,8 @@ RUN	apk update && \
 	cp /usr/share/zoneinfo/$TZ /etc/localtime && \
 	echo $TZ > /etc/timezone && \
 # Wipe Temp Files
-	apk del build-base curl wget unzip tzdata openssl && \
+	apk del build-base wget tzdata openssl && \
 	rm -rf /var/cache/apk/* /tmp/*
-ENTRYPOINT ["supervisord", "-l", "/var/log/supervisord.log", "-c"]
 
+ENTRYPOINT ["/entrypoint.sh", "supervisord", "-l", "/var/log/supervisord.log", "-c"]
 CMD ["/config/supervisord.conf"]
