@@ -13,7 +13,7 @@ ENV	VNC_PASS="CHANGE_IT" \
 	TZ="Asia/Shanghai"
 
 # RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
-RUN	apk add tzdata ca-certificates bash curl wget unzip jq sed openssl python3 py3-requests nss alsa-lib font-noto font-noto-cjk
+RUN	apk add tzdata ca-certificates bash curl wget unzip jq sed openssl python3 py3-requests socat nss alsa-lib font-noto font-noto-cjk
 RUN	apk add supervisor xvfb x11vnc websockify openbox chromium && \
 	openssl req -new -newkey rsa:4096 -days 36500 -nodes -x509 -subj "/C=IN/O=Dis/CN=www.google.com" -keyout /etc/ssl/novnc.key -out /etc/ssl/novnc.cert > /dev/null 2>&1 && \
 	cp /usr/share/zoneinfo/$TZ /etc/localtime && \
