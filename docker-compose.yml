@@ -1,15 +1,23 @@
-version: '3.4'
-
 services:
-  chrome-novnc:
-    container_name: chrome-novnc
-    environment:
-      - VNC_PASS=${VNC_PASS-CHANGE_IT}
-      - VNC_TITLE=${VNC_TITLE-Chromium}
-      - VNC_SHARED=${VNC_SHARED-false}
-      - VNC_RESOLUTION=${VNC_RESOLUTION-1280x720}
-      - PORT=8080
-    image: vital987/chrome-novnc:latest
+  chrome:
+    container_name: chrome
+    # image: ghcr.nju.edu.cn/al-one/chrome
+    build: .
     ports:
-      - "${HOST_PORT-8080}:8080/tcp"
+      - "8080:8080" # webui
+      - "9222:9222" # cdp
+    volumes:
+      - ./chromium:/root/.config/chromium
+    environment:
+      VNC_PASS: ${VNC_PASS:-CHANGE_IT}
+      VNC_TITLE: ${VNC_TITLE:-Chromium}
+      VNC_SHARED: ${VNC_SHARED:-false}
+      VNC_RESOLUTION: ${VNC_RESOLUTION:-1440x880}
+      LAUNCH_OPTS: >-
+        --remote-debugging-port=9221
+        --remote-debugging-address=0.0.0.0
+        --remote-allow-origins=*
+      EXTRA_COMMAND: socat TCP-LISTEN:9222,fork,reuseaddr TCP:127.0.0.1:9221
+      TZ: Asia/Shanghai
     restart: always
+    shm_size: 2gb

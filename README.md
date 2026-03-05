@@ -8,11 +8,12 @@
 - ### Manual
     ```sh
     docker run \
-        --name chrome-novnc \
-        -e PORT=8080 \
+        --name chrome \
         -p 8080:8080 \
         -e VNC_PASS=CHANGE_IT \
-        -d alone/chrome-novnc:latest
+        -e VNC_RESOLUTION=1440x880 \
+        -v /opt/containerd/lib/chromium:/root/.config/chromium \
+        -d alone/chrome-novnc
     ```
 
 ## Environment variables:
