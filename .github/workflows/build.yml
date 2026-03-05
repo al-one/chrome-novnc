@@ -14,7 +14,7 @@ on:
       - .github/**
 
 env:
-  GITHUB_CR_REPO: ghcr.io/${{ github.repository }}
+  GITHUB_CR_REPO: ghcr.io/${{ github.repository_owner }}/chrome
   DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/chrome-novnc
 
 jobs:
