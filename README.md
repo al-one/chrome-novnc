@@ -1,17 +1,17 @@
 # Chromium with NoVNC
 
 ## Installation
-- ### Heroku
-    [![Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/al-one/chrome-novnc)
-
 
 - ### Manual
     ```sh
     docker run \
         --name chrome \
         -p 8080:8080 \
+        -p 9222:9222 \
         -e VNC_PASS=CHANGE_IT \
         -e VNC_RESOLUTION=1440x880 \
+        -e LAUNCH_OPTS=-remote-debugging-port=9221 --remote-debugging-address=0.0.0.0 --remote-allow-origins=* \
+        -e EXTRA_COMMAND=socat TCP-LISTEN:9222,fork,reuseaddr TCP:127.0.0.1:9221 \
         -v /opt/containerd/lib/chromium:/root/.config/chromium \
         -d alone/chrome-novnc
     ```
