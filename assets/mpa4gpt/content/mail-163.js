@@ -127,6 +127,7 @@ async function handlePollEmail(step, payload) {
   log(`Step ${step}: Snapshotted ${existingMailIds.size} existing emails`);
 
   const FALLBACK_AFTER = 3;
+  let result = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     log(`Polling 163 Mail... attempt ${attempt}/${maxAttempts}`);
@@ -157,6 +158,12 @@ async function handlePollEmail(step, payload) {
 
       if (senderMatch || subjectMatch) {
         const code = extractVerificationCode(subject + ' ' + ariaLabel);
+        if (code && result) {
+          // Delete old codes
+          await deleteEmail(item, step);
+          continue;
+        }
+
         if (code && !seenCodes.has(code)) {
           seenCodes.add(code);
           persistSeenCodes();
@@ -168,11 +175,14 @@ async function handlePollEmail(step, payload) {
           // Extra wait to ensure deletion is processed
           await sleep(1000);
 
-          return { ok: true, code, emailTimestamp: Date.now(), mailId: id };
+          result = { ok: true, code, emailTimestamp: Date.now(), mailId: id };
         } else if (code && seenCodes.has(code)) {
           log(`Step ${step}: Skipping already-seen code: ${code}`, 'info');
         }
       }
+    }
+    if (result) {
+      return result;
     }
 
     if (attempt === FALLBACK_AFTER + 1) {
