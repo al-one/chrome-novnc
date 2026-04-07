@@ -1,0 +1,373 @@
+# Multi-Page Automation
+
+一个用于批量跑通 ChatGPT OAuth 注册/登录流程的 Chrome 扩展。
+
+当前版本基于侧边栏控制，支持单步执行、整套自动执行、停止当前流程、保存常用配置，以及通过 DuckDuckGo / QQ / 163 / Inbucket mailbox 协助获取验证码。
+
+## 当前能力
+
+- 从 VPS 面板自动获取 OpenAI OAuth 授权链接
+- 自动打开 OpenAI 注册页并点击 `Sign up / Register`
+- 自动填写邮箱与密码
+- 支持自定义密码；留空时自动生成强密码
+- 自动显示当前使用中的密码，便于后续保存
+- 自动获取注册验证码与登录验证码
+- 支持 `QQ Mail`、`163 Mail`、`Inbucket mailbox`
+- 支持从 DuckDuckGo Email Protection 自动生成新的 `@duck.com` 地址
+- Step 5 同时兼容两种页面：
+  - 页面要求填写 `birthday`
+  - 页面要求填写 `age`
+- 支持 `Auto` 多轮运行
+- 支持中途 `Stop`
+- Step 8 会自动寻找 OAuth 同意页的“继续”按钮，并通过 Chrome debugger 输入事件发起点击，然后监听本地回调地址
+
+
+## 环境要求
+
+- Chrome 浏览器
+- 打开扩展开发者模式
+- 你自己的 VPS 管理面板，且页面结构与当前脚本适配
+- 至少准备一种验证码接收方式：
+  - DuckDuckGo `@duck.com` + QQ / 163 / Inbucket 转发
+  - 手动填写一个可收信邮箱
+- 如果使用 `QQ` / `163` / `Inbucket`，对应页面需要提前能正常打开
+
+## 安装
+
+1. 打开 `chrome://extensions/`
+2. 开启“开发者模式”
+3. 点击“加载已解压的扩展程序”
+4. 选择本项目目录
+5. 打开扩展侧边栏
+
+## 侧边栏配置说明
+
+### `VPS`
+
+你的管理面板 OAuth 页面地址，例如：
+
+```txt
+http(s)://<your-host>/management.html#/oauth
+```
+
+Step 1 和 Step 9 都依赖这个地址。
+
+### `Mail`
+
+支持三种验证码来源：
+
+- `163 Mail`
+- `QQ Mail`
+- `Inbucket`
+
+说明：
+
+- `QQ` 和 `163` 用于直接轮询网页邮箱
+- `Inbucket` 通过你在侧边栏里配置的 host 访问 `mailbox` 页面：`https://<your-inbucket-host>/m/<mailbox>/`
+
+### `Mailbox`
+
+仅当 `Mail = Inbucket` 时显示。
+
+填写 Inbucket mailbox 名称，例如：
+
+```txt
+tmp-mailbox
+```
+
+脚本会自动打开：
+
+```txt
+https://<your-inbucket-host>/m/<mailbox>/
+```
+
+并且只检索未读邮件：
+
+- 只匹配 `.message-list-entry.unseen`
+- 第 2 次轮询开始会自动点击 mailbox 页面上的刷新按钮
+- 识别到验证码后会尝试删除当前邮件，减少重复命中
+
+### `Inbucket`
+
+仅当 `Mail = Inbucket` 时显示。
+
+这里填写 Inbucket host，支持两种格式：
+
+- `your-inbucket-host`
+- `https://your-inbucket-host`
+
+脚本会自动规范化成 origin 后再拼接 mailbox URL。
+
+### `Email`
+
+Step 3 使用的注册邮箱。
+
+来源有两种：
+
+- 手动粘贴
+- 点击 `Auto` 从 DuckDuckGo Email Protection 自动获取一个新的 `@duck.com`
+
+注意：
+
+- 当前 `Auto` 按钮只负责 DuckDuckGo 地址获取
+- 如果你使用 Inbucket，它只是验证码收件箱，不会自动生成 Inbucket 地址
+
+### `Password`
+
+- 留空：自动生成强密码
+- 手动输入：使用你自定义的密码
+- 可通过 `Show / Hide` 按钮切换显示
+
+扩展会把本轮实际使用的密码同步回侧边栏，便于查看和复制。
+
+### `Auto`
+
+整套流程自动跑。
+
+支持多轮运行，运行次数由右上角数字框决定。
+
+## 工作流
+
+### 单步模式
+
+侧边栏共有 9 个步骤按钮，可逐步执行：
+
+1. `Get OAuth Link`
+2. `Open Signup`
+3. `Fill Email / Password`
+4. `Get Signup Code`
+5. `Fill Name / Birthday`
+6. `Login via OAuth`
+7. `Get Login Code`
+8. `Manual OAuth Confirm`
+9. `VPS Verify`
+
+### Auto 模式
+
+点击右上角 `Auto` 后，后台会按顺序跑完整流程。
+
+当前 Auto 逻辑是：
+
+1. Step 1 获取 VPS OAuth 链接
+2. Step 2 打开 OpenAI 注册页
+3. 尝试自动获取 Duck 邮箱
+4. 如果 Duck 自动获取失败，暂停并等待你在侧边栏填写邮箱后点击 `Continue`
+5. 继续执行 Step 3 ~ Step 9
+
+也就是说：
+
+- 如果 Duck 邮箱可自动获取，整套流程更接近全自动
+- 如果不能自动获取，Auto 会在邮箱阶段暂停
+
+## 详细步骤说明
+
+### Step 1: Get OAuth Link
+
+通过 `content/vps-panel.js`：
+
+- 打开 VPS OAuth 面板
+- 等待 `Codex OAuth` 卡片出现
+- 点击“登录”
+- 读取页面里的授权链接
+
+结果会保存到侧边栏的 `OAuth` 字段。
+
+### Step 2: Open Signup
+
+通过 `content/signup-page.js`：
+
+- 打开授权链接
+- 查找 `Sign up / Register / 创建账户` 按钮
+- 自动点击进入注册流程
+
+### Step 3: Fill Email / Password
+
+- 自动填写邮箱
+- 如页面先要求邮箱，再进入密码页，会自动切页继续填写
+- 使用自定义密码或自动生成密码
+- 提交注册表单
+
+实际使用的密码会写入会话状态，并同步到侧边栏显示。
+
+### Step 4: Get Signup Code
+
+根据 `Mail` 配置，轮询邮箱并提取 6 位验证码。
+
+支持：
+
+- `content/qq-mail.js`
+- `content/mail-163.js`
+- `content/inbucket-mail.js`
+
+邮件匹配规则以以下关键词为主：
+
+- 发件人：`openai`、`noreply`、`verify`、`auth`、`duckduckgo`、`forward`
+- 标题：`verify`、`verification`、`code`、`验证`、`confirm`
+
+### Step 5: Fill Name / Birthday
+
+随机生成人名与生日。
+
+当前脚本支持两种页面结构：
+
+- 页面要求 `birthday`
+- 页面要求 `age`
+
+如果页面是生日模式，会填写年月日；如果页面上存在 `input[name='age']`，则直接填写年龄。
+
+### Step 6: Login via OAuth
+
+重新打开 OAuth 链接，使用刚注册的账号登录。
+
+支持：
+
+- 邮箱 + 密码登录
+- 提交后进入验证码验证流程
+
+### Step 7: Get Login Code
+
+与 Step 4 类似，但会使用稍微不同的关键词组合去找登录验证码邮件。
+
+### Step 8: Manual OAuth Confirm
+
+虽然按钮名称还是 `Manual OAuth Confirm`，但当前代码已经做了自动尝试：
+
+- 在授权页定位“继续”按钮
+- 等待按钮可点击
+- 获取按钮坐标
+- 通过 Chrome `debugger` 的输入事件点击该按钮
+- 同时监听 `chrome.webNavigation.onBeforeNavigate`
+- 一旦捕获本地回调地址，就把结果保存到 `Callback`
+
+注意：
+
+- 这一步仍然是最容易因页面变化而失效的一步
+- 如果 120 秒内没有捕获到 localhost 回调，会报错超时
+- README 中的按钮名称沿用了旧文案，但代码行为是“自动尝试点击”
+
+### Step 9: VPS Verify
+
+回到 VPS 面板：
+
+- 自动填写 localhost 回调地址
+- 自动点击“提交回调 URL”
+- 等待“认证成功”状态
+
+## Duck 邮箱自动获取
+
+通过 `content/duck-mail.js`：
+
+- 打开 DuckDuckGo Email Protection Autofill 设置页
+- 查找当前私有地址
+- 如需要，点击 `Generate Private Duck Address`
+- 读取新的 `@duck.com` 地址
+
+这个功能会被：
+
+- 侧边栏 `Email` 旁边的 `Auto` 按钮使用
+- `Auto Run` 流程优先尝试使用
+
+## 停止机制
+
+扩展内置了停止当前流程的能力：
+
+- 侧边栏点击 `Stop`
+- Background 会广播 `STOP_FLOW`
+- 各 content script 会在等待、轮询、sleep、元素查找中尽量中断
+
+适合以下场景：
+
+- 卡在某一步
+- 邮件迟迟不来
+- 页面结构变化导致等待超时
+
+## 状态与数据
+
+主要使用 `chrome.storage.session` 保存运行时状态：
+
+- 当前步骤
+- 每一步状态
+- OAuth 链接
+- 当前邮箱
+- 当前密码
+- localhost 回调地址
+- 账号记录
+- tab 注册信息
+- 自定义设置
+
+特点：
+
+- 浏览器会话级存储
+- 扩展运行期间可在多个步骤之间共享
+- 代码里已启用 `storage.session` 对 content script 的访问
+
+## 项目结构
+
+```txt
+background.js              后台主控，编排 1~9 步、Tab 复用、状态管理
+manifest.json              扩展清单
+data/names.js              随机姓名、生日数据
+content/utils.js           通用工具：等待元素、点击、日志、停止控制
+content/vps-panel.js       VPS 面板步骤：Step 1 / Step 9
+content/signup-page.js     OpenAI 注册/登录页步骤：Step 2 / 3 / 5 / 6 / 8
+content/duck-mail.js       Duck 邮箱自动获取
+content/qq-mail.js         QQ 邮箱验证码轮询
+content/mail-163.js        163 邮箱验证码轮询
+content/inbucket-mail.js   Inbucket mailbox 验证码轮询
+sidepanel/                 侧边栏 UI
+```
+
+## 常见使用建议
+
+### 1. 先单步验证，再开 Auto
+
+推荐先手动跑通一次：
+
+1. Step 1
+2. Step 2
+3. Step 3
+4. Step 4
+
+确认邮箱和验证码链路稳定后，再使用 `Auto`。
+
+### 2. Inbucket 建议使用专用 mailbox
+
+当前 Inbucket 逻辑只看未读邮件，但还是建议：
+
+- 给脚本准备一个相对独立的 mailbox
+- 避免收件箱里混入过多无关邮件
+
+### 3. Duck 自动获取失败时直接手填
+
+如果 Duck 页面打不开、未登录或按钮变化：
+
+- 直接在 `Email` 输入框中粘贴邮箱
+- 再继续执行 Step 3 或 Auto Continue
+
+### 4. Step 8 失败时重点检查
+
+- OAuth 同意页 DOM 是否变化
+- “继续”按钮是否变成了别的文案
+- localhost 回调是否真的触发
+- 浏览器是否允许 debugger 附加
+
+## 已知限制
+
+- Step 8 对页面结构较敏感
+- Duck 自动获取依赖 Duck 页面真实 DOM
+- VPS 面板 DOM 也需要和当前脚本选择器匹配
+- `Auto` 按钮名称和 Step 8 的旧文案还未完全统一，但代码行为以实际实现为准
+
+## 调试建议
+
+- 打开扩展侧边栏看日志
+- 查看 Service Worker 控制台
+- 查看目标页面的 content script 控制台日志
+- 当某一步频繁失败时，优先检查当前页面选择器是否仍然匹配
+
+## 安全说明
+
+- 所有状态仅保存在浏览器会话中
+- 没有硬编码你的 VPS 地址、密码或账户
+- 自定义密码只存在当前会话存储中
+- 邮箱和密码会被记录到本轮 `accounts` 中，便于追踪本次运行结果

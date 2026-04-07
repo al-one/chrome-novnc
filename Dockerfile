@@ -10,6 +10,7 @@ ENV	VNC_PASS="CHANGE_IT" \
 	LANG=en_US.UTF-8 \
 	LANGUAGE=en_US.UTF-8 \
 	LC_ALL=C.UTF-8 \
+	LAUNCH_OPTS="--load-extension=/mpa4gpt" \
 	TZ="Asia/Shanghai"
 
 # RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
