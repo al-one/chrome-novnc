@@ -53,6 +53,7 @@
         <select id="select-mail-provider" class="data-select">
           <option value="163">163 Mail (mail.163.com)</option>
           <option value="qq">QQ Mail (wx.mail.qq.com)</option>
+          <option value="icloud">iCloud Mail (icloud.com.cn)</option>
           <option value="inbucket">Inbucket (custom host)</option>
         </select>
       </div>
@@ -67,7 +68,7 @@
       <div class="data-row">
         <span class="data-label">Email</span>
         <div class="data-inline">
-          <input type="text" id="input-email" class="data-input" placeholder="Paste DuckDuckGo email" />
+          <input type="text" id="input-email" class="data-input" placeholder="Paste email or use Auto" />
           <button id="btn-fetch-email" class="btn btn-outline btn-sm" type="button">Auto</button>
         </div>
       </div>
@@ -93,7 +94,7 @@
     </div>
     <div id="auto-continue-bar" class="auto-continue-bar" style="display:none;">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-      <span class="auto-hint">Use Auto to fetch Duck email, or paste manually, then continue</span>
+      <span class="auto-hint">Use Auto to fetch email, or paste manually, then continue</span>
       <button id="btn-auto-continue" class="btn btn-primary btn-sm">Continue</button>
     </div>
   </section>

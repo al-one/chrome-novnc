@@ -10,7 +10,10 @@
     "debugger",
     "storage",
     "scripting",
-    "activeTab"
+    "activeTab",
+    "cookies",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -53,6 +56,14 @@
         "https://duckduckgo.com/email/settings/autofill*"
       ],
       "js": ["content/utils.js", "content/duck-mail.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.icloud.com.cn/*"
+      ],
+      "js": ["content/utils.js", "content/icloud.js"],
+      "all_frames": true,
       "run_at": "document_idle"
     }
   ],

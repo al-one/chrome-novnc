@@ -7,6 +7,7 @@ const SCRIPT_SOURCE = (() => {
   if (url.includes('mail.qq.com')) return 'qq-mail';
   if (url.includes('mail.163.com')) return 'mail-163';
   if (url.includes('duckduckgo.com/email/settings/autofill')) return 'duck-mail';
+  if (url.includes('icloud.com.cn')) return 'icloud-mail';
   if (url.includes('chatgpt.com')) return 'chatgpt';
   // VPS panel — detected dynamically since URL is configurable
   return 'vps-panel';
@@ -329,7 +330,49 @@ async function humanPause(min = 250, max = 850) {
 
 // Auto-report ready on load
 // Skip ready signal from child iframes of mail pages to avoid overwriting the top frame's registration
-const _isMailChildFrame = (SCRIPT_SOURCE === 'qq-mail' || SCRIPT_SOURCE === 'mail-163' || SCRIPT_SOURCE === 'inbucket-mail') && window !== window.top;
-if (!_isMailChildFrame) {
+// Exception: iCloud mail content lives inside iframes, so those frames must be allowed to report READY
+// For QQ/163/inbucket, skip READY from child iframes — only the top frame handles messages.
+// For iCloud, the opposite: mail DOM lives inside child iframes, so the top frame must NOT
+// report READY (it has no mail DOM), and child frames wait for real DOM before reporting.
+const _isChildFrame = window !== window.top;
+const _isMailChildFrame = (SCRIPT_SOURCE === 'qq-mail' || SCRIPT_SOURCE === 'mail-163' || SCRIPT_SOURCE === 'inbucket-mail') && _isChildFrame;
+const _isIcloudTopFrame = SCRIPT_SOURCE === 'icloud-mail' && !_isChildFrame;
+const _isIcloudChildFrame = SCRIPT_SOURCE === 'icloud-mail' && _isChildFrame;
+
+if (_isIcloudTopFrame) {
+  // Top frame has no mail DOM — do NOT report ready.
+  // The child iframe that contains mail will report ready after its DOM loads.
+  console.log(LOG_PREFIX, 'iCloud top frame — skipping reportReady (child frame will report when ready)');
+}
+else if (_isIcloudChildFrame) {
+  // Continuously wait for mail DOM inside the iframe instead of a fixed delay.
+  // iCloud loads mail content asynchronously; a static 1.5s timeout fires too
+  // early when the iframe is slow, causing READY before the DOM exists.
+  const ICLOUD_READY_SELECTORS = '.thread-list-item, .mailbox-list-item';
+  const ICLOUD_READY_TIMEOUT = 60000;
+  const _observer = new MutationObserver(() => {
+    if (document.querySelector(ICLOUD_READY_SELECTORS)) {
+      _observer.disconnect();
+      clearTimeout(_readyTimer);
+      reportReady();
+    }
+  });
+  _observer.observe(document.body || document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
+  // Also check immediately in case the DOM is already present
+  if (document.querySelector(ICLOUD_READY_SELECTORS)) {
+    _observer.disconnect();
+    reportReady();
+  }
+  const _readyTimer = setTimeout(() => {
+    _observer.disconnect();
+    // Timeout — report ready anyway so the flow doesn't stall forever
+    console.warn(LOG_PREFIX, 'iCloud mail DOM not detected within timeout, reporting ready as fallback');
+    reportReady();
+  }, ICLOUD_READY_TIMEOUT);
+}
+else if (!_isMailChildFrame) {
   reportReady();
 }

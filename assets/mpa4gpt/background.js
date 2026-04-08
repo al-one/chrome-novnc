@@ -31,7 +31,7 @@ const DEFAULT_STATE = {
   logs: [],
   vpsUrl: 'http://host.docker.internal:8317/management.html#/oauth',
   customPassword: '',
-  mailProvider: '163', // 'qq' or '163'
+  mailProvider: '163', // 'qq', '163', 'inbucket', or 'icloud'
   inbucketHost: '',
   inbucketMailbox: '',
 };
@@ -82,6 +82,7 @@ async function resetState() {
   const prev = await chrome.storage.session.get([
     'seenCodes',
     'seenInbucketMailIds',
+    'seenIcloudMailIds',
     'accounts',
     'tabRegistry',
     'vpsUrl',
@@ -95,6 +96,7 @@ async function resetState() {
     ...DEFAULT_STATE,
     seenCodes: prev.seenCodes || [],
     seenInbucketMailIds: prev.seenInbucketMailIds || [],
+    seenIcloudMailIds: prev.seenIcloudMailIds || [],
     accounts: prev.accounts || [],
     tabRegistry: prev.tabRegistry || {},
     vpsUrl: prev.vpsUrl || DEFAULT_STATE.vpsUrl,
@@ -140,11 +142,15 @@ async function getTabRegistry() {
   return state.tabRegistry || {};
 }
 
-async function registerTab(source, tabId) {
+async function registerTab(source, tabId, frameId) {
   const registry = await getTabRegistry();
-  registry[source] = { tabId, ready: true };
+  const entry = { tabId, ready: true };
+  if (frameId !== undefined && frameId !== null) {
+    entry.frameId = frameId;
+  }
+  registry[source] = entry;
   await setState({ tabRegistry: registry });
-  console.log(LOG_PREFIX, `Tab registered: ${source} -> ${tabId}`);
+  console.log(LOG_PREFIX, `Tab registered: ${source} -> tab ${tabId}${frameId !== undefined ? ` frame ${frameId}` : ''}`);
 }
 
 async function isTabAlive(source) {
@@ -173,12 +179,12 @@ async function getTabId(source) {
 
 const pendingCommands = new Map(); // source -> { message, resolve, reject, timer }
 
-function queueCommand(source, message, timeout = 15000) {
+function queueCommand(source, message, timeout = 60000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       pendingCommands.delete(source);
       const err = `Content script on ${source} did not respond in ${timeout / 1000}s. Try refreshing the tab and retry.`;
-      console.error(LOG_PREFIX, err);
+      console.warn(LOG_PREFIX, err);
       reject(new Error(err));
     }, timeout);
     pendingCommands.set(source, { message, resolve, reject, timer });
@@ -186,13 +192,14 @@ function queueCommand(source, message, timeout = 15000) {
   });
 }
 
-function flushCommand(source, tabId) {
+function flushCommand(source, tabId, frameId) {
   const pending = pendingCommands.get(source);
   if (pending) {
     clearTimeout(pending.timer);
     pendingCommands.delete(source);
-    chrome.tabs.sendMessage(tabId, pending.message).then(pending.resolve).catch(pending.reject);
-    console.log(LOG_PREFIX, `Flushed queued command to ${source} (tab ${tabId})`);
+    const sendOpts = frameId !== undefined && frameId !== null ? { frameId } : undefined;
+    chrome.tabs.sendMessage(tabId, pending.message, sendOpts).then(pending.resolve).catch(pending.reject);
+    console.log(LOG_PREFIX, `Flushed queued command to ${source} (tab ${tabId}${frameId !== undefined ? ` frame ${frameId}` : ''})`);
   }
 }
 
@@ -363,8 +370,9 @@ async function sendToContentScript(source, message) {
     return queueCommand(source, message);
   }
 
-  console.log(LOG_PREFIX, `Sending to ${source} (tab ${entry.tabId}):`, message.type);
-  return chrome.tabs.sendMessage(entry.tabId, message);
+  console.log(LOG_PREFIX, `Sending to ${source} (tab ${entry.tabId}${entry.frameId !== undefined ? ` frame ${entry.frameId}` : ''}):`, message.type);
+  const sendOpts = entry.frameId !== undefined ? { frameId: entry.frameId } : undefined;
+  return chrome.tabs.sendMessage(entry.tabId, message, sendOpts);
 }
 
 // ============================================================
@@ -484,11 +492,12 @@ async function broadcastStopToContentScripts() {
   for (const entry of Object.values(registry)) {
     if (!entry?.tabId) continue;
     try {
+      const sendOpts = entry.frameId !== undefined ? { frameId: entry.frameId } : undefined;
       await chrome.tabs.sendMessage(entry.tabId, {
         type: 'STOP_FLOW',
         source: 'background',
         payload: {},
-      });
+      }, sendOpts);
     } catch {}
   }
 }
@@ -516,10 +525,11 @@ async function handleMessage(message, sender) {
   switch (message.type) {
     case 'CONTENT_SCRIPT_READY': {
       const tabId = sender.tab?.id;
+      const frameId = sender.frameId;
       if (tabId && message.source) {
-        await registerTab(message.source, tabId);
-        flushCommand(message.source, tabId);
-        await addLog(`Content script ready: ${message.source} (tab ${tabId})`);
+        await registerTab(message.source, tabId, frameId);
+        flushCommand(message.source, tabId, frameId);
+        await addLog(`Content script ready: ${message.source} (tab ${tabId}${frameId !== undefined ? ` frame ${frameId}` : ''})`);
       }
       return { ok: true };
     }
@@ -615,6 +625,13 @@ async function handleMessage(message, sender) {
       clearStopRequest();
       const email = await fetchDuckEmail(message.payload || {});
       return { ok: true, email };
+    }
+
+    case 'FETCH_PROVIDER_EMAIL': {
+      clearStopRequest();
+      const s = await getState();
+      const providerEmail = await fetchProviderEmail(s.mailProvider, message.payload || {});
+      return { ok: true, email: providerEmail };
     }
 
     case 'STOP_FLOW': {
@@ -816,6 +833,152 @@ async function fetchDuckEmail(options = {}) {
   return result.email;
 }
 
+async function fetchProviderEmail(provider, options = {}) {
+  throwIfStopped();
+  if (provider === 'icloud') {
+    return await fetchICloudEmail(options);
+  }
+  return await fetchDuckEmail(options);
+}
+
+async function fetchICloudEmail(options = {}) {
+  throwIfStopped();
+  await addLog('iCloud Mail: Reading cookies and generating Hide My Email address...');
+
+  // Read iCloud cookies — X-APPLE* cookies may live on different domains
+  const domains = ['.icloud.com.cn', '.icloud.com', '.apple.com.cn', '.apple.com'];
+  let allCookies = [];
+  for (const domain of domains) {
+    const c = await chrome.cookies.getAll({ domain });
+    await addLog(`iCloud Mail: Found ${c.length} cookies on ${domain}`);
+    allCookies = allCookies.concat(c);
+  }
+
+  // Deduplicate by name+domain
+  const seen = new Set();
+  allCookies = allCookies.filter(c => {
+    const key = `${c.domain}:${c.name}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  await addLog(`iCloud Mail: Total unique cookies: ${allCookies.length}`);
+
+  const appleCookies = allCookies.filter(c => c.name.match(/^X.APPLE/i));
+  if (appleCookies.length === 0) {
+    throw new Error('No X-APPLE* cookies found on any iCloud/Apple domain. Please log in to https://www.icloud.com.cn/ first.');
+  }
+
+  // Build cookie header and extract dsid/clientId from cookies
+  const cookieHeader = appleCookies.map(c => `${c.name}=${c.value}`).join('; ');
+  const dsid = appleCookies.find(c => c.name === 'X-APPLE-WEBAUTH-USER')?.value || '';
+
+  const baseUrl = 'https://p68-maildomainws.icloud.com';
+  const commonParams = new URLSearchParams({
+    clientBuildNumber: '2412Hotfix36',
+    clientMasteringNumber: '2412Hotfix36',
+    clientId: `web-${Date.now()}`,
+    dsid: dsid,
+  });
+
+  // Note: Origin, Referer, and Cookie are set via declarativeNetRequest session rule
+  // because they are forbidden headers that cannot be set in fetch().
+  const commonHeaders = {
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Content-Type': 'application/json',
+    'User-Agent': navigator.userAgent,
+  };
+
+  // Register a session rule to inject Origin, Referer, and Cookie headers
+  // into iCloud HME requests. These are forbidden headers in fetch().
+  const HME_RULE_ID = 1001;
+  try {
+    await chrome.declarativeNetRequest.updateSessionRules({
+      addRules: [{
+        id: HME_RULE_ID,
+        priority: 1,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [
+            { header: 'Origin', operation: 'set', value: 'https://www.icloud.com.cn' },
+            { header: 'Referer', operation: 'set', value: 'https://www.icloud.com.cn/' },
+            { header: 'Cookie', operation: 'set', value: cookieHeader },
+          ],
+        },
+        condition: {
+          urlFilter: '||p68-maildomainws.icloud.com/v1/hme/',
+          resourceTypes: ['xmlhttprequest'],
+        },
+      }],
+      removeRuleIds: [HME_RULE_ID],
+    });
+  } catch (err) {
+    await addLog(`iCloud Mail: Failed to set DNR rule: ${err.message}`, 'warn');
+  }
+
+  let result;
+  try {
+    // Step 1: Generate a Hide My Email address
+    await addLog('iCloud Mail: Calling generate API...');
+    const generateUrl = `${baseUrl}/v1/hme/generate?${commonParams.toString()}`;
+    const generateRes = await fetch(generateUrl, {
+      method: 'POST',
+      headers: commonHeaders,
+      body: JSON.stringify({ langCode: 'en-us' }),
+    });
+
+    if (!generateRes.ok) {
+      const errText = await generateRes.text().catch(() => '');
+      throw new Error(`iCloud generate failed (${generateRes.status}): ${errText.slice(0, 200)}`);
+    }
+
+    const generateData = await generateRes.json();
+    const hmeEmail = generateData?.result?.hme;
+    if (!hmeEmail) {
+      throw new Error(`iCloud generate returned no email address. Response: ${JSON.stringify(generateData).slice(0, 300)}`);
+    }
+
+    await addLog(`iCloud Mail: Generated address ${hmeEmail}, reserving...`);
+
+    // Step 2: Reserve the generated address
+    const reserveUrl = `${baseUrl}/v1/hme/reserve?${commonParams.toString()}`;
+    const reserveRes = await fetch(reserveUrl, {
+      method: 'POST',
+      headers: commonHeaders,
+      body: JSON.stringify({
+        hme: hmeEmail,
+        label: 'MultiPage Auto',
+        note: 'Generated by MultiPage extension',
+      }),
+    });
+
+    if (!reserveRes.ok) {
+      const errText = await reserveRes.text().catch(() => '');
+      throw new Error(`iCloud reserve failed (${reserveRes.status}): ${errText.slice(0, 200)}`);
+    }
+
+    const reserveData = await reserveRes.json();
+    if (!reserveData?.success && reserveData?.success !== undefined) {
+      throw new Error(`iCloud reserve returned failure. Response: ${JSON.stringify(reserveData).slice(0, 300)}`);
+    }
+
+    await setEmailState(hmeEmail);
+    await addLog(`iCloud Mail: Reserved ${hmeEmail}`, 'ok');
+    result = hmeEmail;
+  } finally {
+    // Always clean up the session rule so it doesn't leak to other requests
+    try {
+      await chrome.declarativeNetRequest.updateSessionRules({
+        removeRuleIds: [HME_RULE_ID],
+      });
+    } catch {}
+  }
+
+  return result;
+}
+
 // ============================================================
 // Auto Run Flow
 // ============================================================
@@ -866,15 +1029,16 @@ async function autoRunLoop(totalRuns) {
 
       let emailReady = false;
       try {
-        const duckEmail = await fetchDuckEmail({ generateNew: true });
-        await addLog(`=== Run ${run}/${totalRuns} — Duck email ready: ${duckEmail} ===`, 'ok');
+        const curState = await getState();
+        const providerEmail = await fetchProviderEmail(curState.mailProvider, { generateNew: true });
+        await addLog(`=== Run ${run}/${totalRuns} — Email ready: ${providerEmail} ===`, 'ok');
         emailReady = true;
       } catch (err) {
-        await addLog(`Duck Mail auto-fetch failed: ${err.message}`, 'warn');
+        await addLog(`Email auto-fetch failed: ${err.message}`, 'warn');
       }
 
       if (!emailReady) {
-        await addLog(`=== Run ${run}/${totalRuns} PAUSED: Fetch Duck email or paste manually, then continue ===`, 'warn');
+        await addLog(`=== Run ${run}/${totalRuns} PAUSED: Fetch email or paste manually, then continue ===`, 'warn');
         chrome.runtime.sendMessage(status('waiting_email')).catch(() => {});
 
         // Wait for RESUME_AUTO_RUN — sets a promise that resumeAutoRun resolves
@@ -961,10 +1125,28 @@ async function executeStep1(state) {
     throw new Error('No VPS URL configured. Enter VPS address in Side Panel first.');
   }
   await addLog(`Step 1: Opening VPS panel...`);
-  await reuseOrCreateTab('vps-panel', state.vpsUrl, {
-    inject: ['content/utils.js', 'content/vps-panel.js'],
-    reloadIfSameUrl: true,
-  });
+  let lastError;
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      await reuseOrCreateTab('vps-panel', state.vpsUrl, {
+        inject: ['content/utils.js', 'content/vps-panel.js'],
+        reloadIfSameUrl: true,
+      });
+      lastError = null;
+      break;
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxRetries) {
+        const delay = attempt * 2000;
+        await addLog(`Step 1: Open tab failed (attempt ${attempt}/${maxRetries}), retrying in ${delay / 1000}s...`, 'warn');
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  if (lastError) {
+    throw lastError;
+  }
 
   await sendToContentScript('vps-panel', {
     type: 'EXECUTE_STEP',
@@ -1029,6 +1211,9 @@ function getMailConfig(state) {
   const provider = state.mailProvider || 'qq';
   if (provider === '163') {
     return { source: 'mail-163', url: 'https://mail.163.com/js6/main.jsp?df=mail163_letter#module=mbox.ListModule%7C%7B%22fid%22%3A1%2C%22order%22%3A%22date%22%2C%22desc%22%3Atrue%7D', label: '163 Mail' };
+  }
+  if (provider === 'icloud') {
+    return { source: 'icloud-mail', url: 'https://www.icloud.com.cn/mail/', label: 'iCloud Mail' };
   }
   if (provider === 'inbucket') {
     const host = normalizeInbucketOrigin(state.inbucketHost);

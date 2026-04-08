@@ -255,14 +255,14 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-async function fetchDuckEmail() {
+async function fetchProviderEmail() {
   const defaultLabel = 'Auto';
   btnFetchEmail.disabled = true;
   btnFetchEmail.textContent = '...';
 
   try {
     const response = await chrome.runtime.sendMessage({
-      type: 'FETCH_DUCK_EMAIL',
+      type: 'FETCH_PROVIDER_EMAIL',
       source: 'sidepanel',
       payload: { generateNew: true },
     });
@@ -271,7 +271,7 @@ async function fetchDuckEmail() {
       throw new Error(response.error);
     }
     if (!response?.email) {
-      throw new Error('Duck email was not returned.');
+      throw new Error('Email was not returned.');
     }
 
     inputEmail.value = response.email;
@@ -311,7 +311,7 @@ document.querySelectorAll('.step-btn').forEach(btn => {
 });
 
 btnFetchEmail.addEventListener('click', async () => {
-  await fetchDuckEmail().catch(() => {});
+  await fetchProviderEmail().catch(() => {});
 });
 
 btnTogglePassword.addEventListener('click', () => {
@@ -337,7 +337,7 @@ btnAutoRun.addEventListener('click', async () => {
 btnAutoContinue.addEventListener('click', async () => {
   const email = inputEmail.value.trim();
   if (!email) {
-    showToast('Please fetch or paste DuckDuckGo email first!', 'warn');
+    showToast('Please fetch or paste email first!', 'warn');
     return;
   }
   autoContinueBar.style.display = 'none';
