@@ -31,7 +31,7 @@ const DEFAULT_STATE = {
   logs: [],
   vpsUrl: 'http://host.docker.internal:8317/management.html#/oauth',
   customPassword: '',
-  mailProvider: '163', // 'qq', '163', 'inbucket', or 'icloud'
+  mailProvider: 'icloud', // 'qq', '163', 'inbucket', or 'icloud'
   inbucketHost: '',
   inbucketMailbox: '',
 };

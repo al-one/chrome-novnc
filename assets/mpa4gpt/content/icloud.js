@@ -104,14 +104,6 @@ function findMailEntries() {
   return document.querySelectorAll('.thread-list-item');
 }
 
-function getCurrentMailIds() {
-  const ids = new Set();
-  Array.from(findMailEntries()).forEach((entry, index) => {
-    ids.add(getMailId(entry, index));
-  });
-  return ids;
-}
-
 async function openInbox() {
   const mailboxItem = document.querySelector('.mailbox-list-item');
   if (mailboxItem) {
@@ -122,17 +114,20 @@ async function openInbox() {
 
 async function refreshMailbox() {
   // Try clicking the inbox sidebar item to refresh
-  const inboxItem = document.querySelector('.mailbox-list-item');
-  if (inboxItem) {
-    simulateClick(inboxItem);
-    await sleep(1500);
-    return;
-  }
   // Fallback: try a refresh button if one exists
   const refreshSel = '[title="Refresh"], [title="刷新"], [aria-label="Refresh"], [aria-label="刷新"]';
   const refreshBtn = document.querySelector(refreshSel);
   if (refreshBtn) {
     simulateClick(refreshBtn);
+    await sleep(2000);
+    return;
+  }
+  else {
+    console.warn(ICLOUD_PREFIX, 'Could not find inbox refresh button');
+  }
+  const inboxItem = document.querySelector('.mailbox-list-item[aria-selected="false"]');
+  if (inboxItem) {
+    simulateClick(inboxItem);
     await sleep(1500);
   }
 }
@@ -147,14 +142,15 @@ async function deleteMailEntry(entry, step) {
     else {
       entry.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 0, clientY: 0 }));
     }
-    await sleep(500);
+    await sleep(800);
 
     // Click the delete button from context menu
-    const deleteBtn = entry.querySelector('[aria-label="删除邮件"], [aria-label="Trash Message"], .destructive');
+    const popover = document.querySelector('.action-menu-popover ui-popover');
+    const deleteBtn = popover ? popover.querySelector('[aria-label="删除邮件"], [aria-label="Trash Message"], .destructive') : null;
     if (deleteBtn) {
-      simulateClick(deleteBtn);
+      simulateClick(deleteBtn, 'mouseup');
       log(`Step ${step}: Deleted iCloud mail message`, 'ok');
-      await sleep(800);
+      await sleep(300);
     }
   } catch (err) {
     log(`Step ${step}: Failed to delete iCloud mail message: ${err.message}`, 'warn');
@@ -172,28 +168,8 @@ async function handlePollEmail(step, payload) {
 
   log(`Step ${step}: Starting email poll on iCloud Mail (max ${maxAttempts} attempts)`);
 
-  // Wait for mail DOM to appear
-  try {
-    await waitForElement('.thread-list-item, .mailbox-list-item', 15000);
-    log(`Step ${step}: iCloud Mail page loaded`);
-  } catch {
-    throw new Error('iCloud Mail page did not load. Make sure you are logged in and the mail page is open.');
-  }
-
-  // If we see mailbox list but not thread list, click to open inbox
-  const hasThreadList = document.querySelector('.thread-list-item');
-  if (!hasThreadList) {
-    await openInbox();
-    try {
-      await waitForElement('.thread-list-item', 10000);
-    } catch {
-      throw new Error('Could not open iCloud inbox. Try clicking the inbox manually.');
-    }
-  }
-
-  // Snapshot existing mail IDs
-  const existingMailIds = getCurrentMailIds();
-  log(`Step ${step}: Snapshotted ${existingMailIds.size} existing mail entries`);
+  // Click to open inbox
+  await openInbox();
 
   const FALLBACK_AFTER = 3;
 
@@ -205,42 +181,44 @@ async function handlePollEmail(step, payload) {
       await refreshMailbox();
     }
 
+    let result = null;
     const entries = Array.from(findMailEntries()).map(parseMailEntry);
-    const useFallback = attempt > FALLBACK_AFTER;
-    const candidates = [];
 
     for (const mail of entries) {
       if (seenMailIds.has(mail.mailId)) continue;
-      if (!useFallback && existingMailIds.has(mail.mailId)) continue;
 
       const match = rowMatchesFilters(mail, senderFilters, subjectFilters, targetEmail);
       if (!match.matched) continue;
 
-      candidates.push({ ...mail, code: match.code });
-    }
-
-    for (const mail of candidates) {
-      const code = mail.code || extractVerificationCode(mail.combinedText);
+      const code = match.code || extractVerificationCode(mail.combinedText);
       if (!code) continue;
 
-      // Try to delete the verification email
-      await deleteMailEntry(mail.entry, step);
+      if (result) {
+        // Delete old codes
+        await deleteMailEntry(mail.entry, step);
+        continue;
+      }
 
       seenMailIds.add(mail.mailId);
       await persistSeenMailIds();
 
-      const source = existingMailIds.has(mail.mailId) ? 'fallback' : 'new';
       log(
-        `Step ${step}: Code found: ${code} (${source}, sender: ${mail.sender || 'unknown'}, subject: ${(mail.subject || '').slice(0, 60)})`,
+        `Step ${step}: Code found: ${code} (sender: ${mail.sender || 'unknown'}, subject: ${(mail.subject || '').slice(0, 60)})`,
         'ok'
       );
+      // Try to delete the verification email
+      await deleteMailEntry(mail.entry, step);
 
-      return {
+      result = {
         ok: true,
         code,
         emailTimestamp: Date.now(),
         mailId: mail.mailId,
       };
+    }
+
+    if (result) {
+      return result;
     }
 
     if (attempt === FALLBACK_AFTER + 1) {
