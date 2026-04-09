@@ -91,7 +91,7 @@ async function step1_getOAuthLink() {
   // Wait for the auth URL to appear in the specific div
   let authUrlEl = null;
   try {
-    authUrlEl = await waitForElement('[class*="authUrlValue"]', 15000);
+    authUrlEl = await waitForElement('[class*="authUrlValue"]', 30000);
   } catch {
     throw new Error(
       'Auth URL did not appear after clicking login. ' +

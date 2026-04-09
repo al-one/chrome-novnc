@@ -60,12 +60,12 @@ async function step2_clickRegister() {
     registerBtn = await waitForElementByText(
       'a, button, [role="button"], [role="link"]',
       /sign\s*up|register|create\s*account|注册/i,
-      10000
+      15000
     );
   } catch {
     // Some pages may have a direct link
     try {
-      registerBtn = await waitForElement('a[href*="signup"], a[href*="register"]', 5000);
+      registerBtn = await waitForElement('a[href*="signup"], a[href*="register"]', 10000);
     } catch {
       throw new Error(
         'Could not find Register/Sign up button. ' +
@@ -122,7 +122,7 @@ async function step3_fillEmailPassword(payload) {
     }
 
     try {
-      passwordInput = await waitForElement('input[type="password"]', 10000);
+      passwordInput = await waitForElement('input[type="password"]', 20000);
     } catch {
       throw new Error('Could not find password input after submitting email. URL: ' + location.href);
     }
@@ -215,7 +215,7 @@ async function step6_login(payload) {
   try {
     emailInput = await waitForElement(
       'input[type="email"], input[name="email"], input[name="username"], input[id*="email"], input[placeholder*="email" i], input[placeholder*="Email"]',
-      15000
+      20000
     );
   } catch {
     throw new Error('Could not find email input on login page. URL: ' + location.href);
