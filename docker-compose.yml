@@ -1,22 +1,15 @@
 services:
-  chrome:
-    container_name: chrome
-    image: ghcr.nju.edu.cn/al-one/chrome
+  chromium-gpt:
+    container_name: chromium-gpt
+    image: ghcr.nju.edu.cn/al-one/chrome:codex
+    pull_policy: always
     ports:
-      - "8080:8080" # webui
-      - "9222:9222" # cdp
+      - "18083:8080"
     volumes:
       - ./chromium:/root/.config/chromium
     environment:
       VNC_PASS: ${VNC_PASS:-CHANGE_IT}
-      VNC_TITLE: ${VNC_TITLE:-Chromium}
-      VNC_SHARED: ${VNC_SHARED:-false}
       VNC_RESOLUTION: ${VNC_RESOLUTION:-1440x880}
-      LAUNCH_OPTS: >-
-        --remote-debugging-port=9221
-        --remote-debugging-address=0.0.0.0
-        --remote-allow-origins=*
-      EXTRA_COMMAND: socat TCP-LISTEN:9222,fork,reuseaddr TCP:127.0.0.1:9221
       TZ: Asia/Shanghai
-    restart: always
     shm_size: 2gb
+    restart: always
