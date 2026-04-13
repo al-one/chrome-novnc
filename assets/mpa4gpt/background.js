@@ -610,7 +610,10 @@ async function handleMessage(message, sender) {
 
     case 'AUTO_RUN': {
       const localSettings = await getLocalSettings();
-      const totalRuns = localSettings.scheduledRunCount || 1;
+      const payloadTotalRuns = Number(message.payload?.totalRuns);
+      const totalRuns = Number.isInteger(payloadTotalRuns) && payloadTotalRuns > 0
+        ? payloadTotalRuns
+        : (localSettings.scheduledRunCount || 1);
       return await startAutoBatch({ totalRuns, trigger: 'manual' });
     }
 
@@ -1025,8 +1028,11 @@ function markBatchProgress(reason = 'progress') {
 
 function finishCurrentBatch(status) {
   currentBatchStatus = status;
-  autoRunActive = false;
+  currentBatchId = null;
+  currentBatchStartedAt = null;
+  currentBatchLastProgressAt = null;
   currentBatchTrigger = null;
+  autoRunActive = false;
 }
 
 async function startAutoBatch({ totalRuns, trigger }) {
@@ -1154,9 +1160,11 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
 
   const completedRuns = autoRunCurrentRun;
   if (stopRequested) {
-    await addLog(`=== Stopped after ${Math.max(0, completedRuns - 1)}/${autoRunTotalRuns} runs ===`, 'warn');
-    chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: completedRuns, totalRuns: autoRunTotalRuns } }).catch(() => {});
-    finishCurrentBatch('stopped');
+    if (currentBatchStatus !== 'stopped') {
+      await addLog(`=== Stopped after ${Math.max(0, completedRuns - 1)}/${autoRunTotalRuns} runs ===`, 'warn');
+      chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: completedRuns, totalRuns: autoRunTotalRuns } }).catch(() => {});
+      finishCurrentBatch('stopped');
+    }
   } else if (completedRuns >= autoRunTotalRuns) {
     await addLog(`=== All ${autoRunTotalRuns} runs completed successfully ===`, 'ok');
     chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'complete', currentRun: completedRuns, totalRuns: autoRunTotalRuns } }).catch(() => {});
