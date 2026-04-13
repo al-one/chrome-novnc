@@ -1060,6 +1060,7 @@ async function startAutoBatch({ totalRuns, trigger }) {
 async function autoRunLoop(totalRuns, batchContext = {}) {
   autoRunActive = true;
   autoRunTotalRuns = totalRuns;
+  let successfulRuns = 0;
   currentBatchId = batchContext.batchId || currentBatchId;
   currentBatchTrigger = batchContext.trigger || currentBatchTrigger;
   markBatchProgress(`batch-start:${currentBatchTrigger || 'unknown'}`);
@@ -1145,6 +1146,7 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
       await executeStepAndWait(9, 1000);
       markBatchProgress(`run-${run}-step-9-complete`);
 
+      successfulRuns = run;
       await addLog(`=== Run ${run}/${totalRuns} COMPLETE! ===`, 'ok');
 
     } catch (err) {
@@ -1158,11 +1160,11 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
     }
   }
 
-  const completedRuns = autoRunCurrentRun;
+  const completedRuns = successfulRuns;
   if (stopRequested) {
     if (currentBatchStatus !== 'stopped') {
-      await addLog(`=== Stopped after ${Math.max(0, completedRuns - 1)}/${autoRunTotalRuns} runs ===`, 'warn');
-      chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: completedRuns, totalRuns: autoRunTotalRuns } }).catch(() => {});
+      await addLog(`=== Stopped after ${completedRuns}/${autoRunTotalRuns} runs ===`, 'warn');
+      chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: autoRunCurrentRun, totalRuns: autoRunTotalRuns } }).catch(() => {});
       finishCurrentBatch('stopped');
     }
   } else if (completedRuns >= autoRunTotalRuns) {
@@ -1171,7 +1173,7 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
     finishCurrentBatch('complete');
   } else {
     await addLog(`=== Stopped after ${completedRuns}/${autoRunTotalRuns} runs ===`, 'warn');
-    chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: completedRuns, totalRuns: autoRunTotalRuns } }).catch(() => {});
+    chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: autoRunCurrentRun, totalRuns: autoRunTotalRuns } }).catch(() => {});
     finishCurrentBatch('failed');
   }
   await setState({ autoRunning: false });
