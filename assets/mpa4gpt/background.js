@@ -609,10 +609,9 @@ async function handleMessage(message, sender) {
     }
 
     case 'AUTO_RUN': {
-      clearStopRequest();
-      const totalRuns = message.payload?.totalRuns || 1;
-      autoRunLoop(totalRuns);  // fire-and-forget
-      return { ok: true };
+      const localSettings = await getLocalSettings();
+      const totalRuns = localSettings.scheduledRunCount || 1;
+      return await startAutoBatch({ totalRuns, trigger: 'manual' });
     }
 
     case 'RESUME_AUTO_RUN': {
@@ -760,7 +759,7 @@ async function requestStop() {
   }
 
   await markRunningStepsStopped();
-  autoRunActive = false;
+  finishCurrentBatch('stopped');
   await setState({ autoRunning: false });
   chrome.runtime.sendMessage({
     type: 'AUTO_RUN_STATUS',
@@ -1006,21 +1005,63 @@ async function fetchICloudEmail(options = {}) {
 let autoRunActive = false;
 let autoRunCurrentRun = 0;
 let autoRunTotalRuns = 1;
+let currentBatchId = null;
+let currentBatchStartedAt = null;
+let currentBatchLastProgressAt = null;
+let currentBatchStatus = 'idle';
+let currentBatchTrigger = null;
 
-// Outer loop: runs the full flow N times
-async function autoRunLoop(totalRuns) {
+function createBatchId() {
+  return `batch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function markBatchProgress(reason = 'progress') {
+  currentBatchLastProgressAt = Date.now();
+  console.log(LOG_PREFIX, `Batch progress: ${reason}`, {
+    currentBatchId,
+    currentBatchLastProgressAt,
+  });
+}
+
+function finishCurrentBatch(status) {
+  currentBatchStatus = status;
+  autoRunActive = false;
+  currentBatchTrigger = null;
+}
+
+async function startAutoBatch({ totalRuns, trigger }) {
   if (autoRunActive) {
-    await addLog('Auto run already in progress', 'warn');
-    return;
+    await addLog(`Batch already running, skip ${trigger} trigger`, 'warn');
+    return { ok: false, reason: 'already-running' };
   }
 
   clearStopRequest();
+  currentBatchId = createBatchId();
+  currentBatchStartedAt = Date.now();
+  currentBatchLastProgressAt = currentBatchStartedAt;
+  currentBatchStatus = 'running';
+  currentBatchTrigger = trigger;
+
+  autoRunLoop(totalRuns, {
+    batchId: currentBatchId,
+    trigger,
+  });
+
+  return { ok: true, batchId: currentBatchId };
+}
+
+// Outer loop: runs the full flow N times
+async function autoRunLoop(totalRuns, batchContext = {}) {
   autoRunActive = true;
   autoRunTotalRuns = totalRuns;
+  currentBatchId = batchContext.batchId || currentBatchId;
+  currentBatchTrigger = batchContext.trigger || currentBatchTrigger;
+  markBatchProgress(`batch-start:${currentBatchTrigger || 'unknown'}`);
   await setState({ autoRunning: true });
 
   for (let run = 1; run <= totalRuns; run++) {
     autoRunCurrentRun = run;
+    markBatchProgress(`run-${run}-start`);
 
     // Reset everything at the start of each run (keep VPS/mail settings)
     const prevState = await getState();
@@ -1045,13 +1086,16 @@ async function autoRunLoop(totalRuns) {
       chrome.runtime.sendMessage(status('running')).catch(() => {});
 
       await executeStepAndWait(1, 2000);
+      markBatchProgress(`run-${run}-step-1-complete`);
       await executeStepAndWait(2, 2000);
+      markBatchProgress(`run-${run}-step-2-complete`);
 
       let emailReady = false;
       try {
         const curState = await getState();
         const providerEmail = await fetchProviderEmail(curState.mailProvider, { generateNew: true });
         await addLog(`=== Run ${run}/${totalRuns} — Email ready: ${providerEmail} ===`, 'ok');
+        markBatchProgress(`run-${run}-email-ready`);
         emailReady = true;
       } catch (err) {
         await addLog(`Email auto-fetch failed: ${err.message}`, 'warn');
@@ -1063,6 +1107,7 @@ async function autoRunLoop(totalRuns) {
 
         // Wait for RESUME_AUTO_RUN — sets a promise that resumeAutoRun resolves
         await waitForResume();
+        markBatchProgress(`run-${run}-resumed`);
 
         const resumedState = await getState();
         if (!resumedState.email) {
@@ -1080,12 +1125,19 @@ async function autoRunLoop(totalRuns) {
       }
 
       await executeStepAndWait(3, 3000);
+      markBatchProgress(`run-${run}-step-3-complete`);
       await executeStepAndWait(4, 2000);
+      markBatchProgress(`run-${run}-step-4-complete`);
       await executeStepAndWait(5, 3000);
+      markBatchProgress(`run-${run}-step-5-complete`);
       await executeStepAndWait(6, 3000);
+      markBatchProgress(`run-${run}-step-6-complete`);
       await executeStepAndWait(7, 2000);
+      markBatchProgress(`run-${run}-step-7-complete`);
       await executeStepAndWait(8, 2000);
+      markBatchProgress(`run-${run}-step-8-complete`);
       await executeStepAndWait(9, 1000);
+      markBatchProgress(`run-${run}-step-9-complete`);
 
       await addLog(`=== Run ${run}/${totalRuns} COMPLETE! ===`, 'ok');
 
@@ -1104,14 +1156,16 @@ async function autoRunLoop(totalRuns) {
   if (stopRequested) {
     await addLog(`=== Stopped after ${Math.max(0, completedRuns - 1)}/${autoRunTotalRuns} runs ===`, 'warn');
     chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: completedRuns, totalRuns: autoRunTotalRuns } }).catch(() => {});
+    finishCurrentBatch('stopped');
   } else if (completedRuns >= autoRunTotalRuns) {
     await addLog(`=== All ${autoRunTotalRuns} runs completed successfully ===`, 'ok');
     chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'complete', currentRun: completedRuns, totalRuns: autoRunTotalRuns } }).catch(() => {});
+    finishCurrentBatch('complete');
   } else {
     await addLog(`=== Stopped after ${completedRuns}/${autoRunTotalRuns} runs ===`, 'warn');
     chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: completedRuns, totalRuns: autoRunTotalRuns } }).catch(() => {});
+    finishCurrentBatch('failed');
   }
-  autoRunActive = false;
   await setState({ autoRunning: false });
   clearStopRequest();
 }
