@@ -7,6 +7,16 @@ const DUCK_AUTOFILL_URL = 'https://duckduckgo.com/email/settings/autofill';
 const STOP_ERROR_MESSAGE = 'Flow stopped by user.';
 const HUMAN_STEP_DELAY_MIN = 700;
 const HUMAN_STEP_DELAY_MAX = 2200;
+const SCHEDULE_ALARM_NAME = 'multipage-auto-schedule';
+
+const DEFAULT_LOCAL_SETTINGS = {
+  scheduledRunCount: 1,
+  scheduleIntervalMinutes: 0,
+  scheduleEnabled: false,
+  scheduleNextRunAt: null,
+  scheduleLastStartedAt: null,
+  scheduleLastSkippedAt: null,
+};
 
 initializeSessionStorageAccess();
 
@@ -57,6 +67,15 @@ async function initializeSessionStorageAccess() {
 async function setState(updates) {
   console.log(LOG_PREFIX, 'storage.set:', JSON.stringify(updates).slice(0, 200));
   await chrome.storage.session.set(updates);
+}
+
+async function getLocalSettings() {
+  const saved = await chrome.storage.local.get(Object.keys(DEFAULT_LOCAL_SETTINGS));
+  return { ...DEFAULT_LOCAL_SETTINGS, ...saved };
+}
+
+async function setLocalSettings(updates) {
+  await chrome.storage.local.set(updates);
 }
 
 function broadcastDataUpdate(payload) {
@@ -567,7 +586,8 @@ async function handleMessage(message, sender) {
     }
 
     case 'GET_STATE': {
-      return await getState();
+      const [state, localSettings] = await Promise.all([getState(), getLocalSettings()]);
+      return { ...state, ...localSettings };
     }
 
     case 'RESET': {
