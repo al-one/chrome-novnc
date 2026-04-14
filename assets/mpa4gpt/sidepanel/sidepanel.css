@@ -93,6 +93,7 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   margin-bottom: 14px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border-subtle);
@@ -102,9 +103,13 @@ header {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
-.header-left svg { color: var(--blue); }
+.header-left svg {
+  color: var(--blue);
+  flex-shrink: 0;
+}
 
 .header-left h1 {
   font-size: 16px;
@@ -116,7 +121,8 @@ header {
 .header-btns {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 /* ============================================================
@@ -149,6 +155,7 @@ header {
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 7px 14px;
   font-family: inherit;
@@ -179,26 +186,12 @@ header {
 }
 .btn-danger:hover { opacity: 0.9; box-shadow: 0 2px 8px var(--red-soft); }
 
-.run-group {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 .run-count-input {
-  width: 42px;
-  padding: 6px 4px;
   text-align: center;
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   font-weight: 600;
-  outline: none;
 }
-.run-count-input:focus { border-color: var(--blue); }
 .run-count-input::-webkit-inner-spin-button { opacity: 0.5; }
 .btn-success:disabled, .btn-primary:disabled, .btn-danger:disabled { background: var(--bg-elevated); color: var(--text-muted); cursor: not-allowed; box-shadow: none; }
 .run-count-input:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -220,6 +213,128 @@ header {
 
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 .btn-xs { padding: 4px 10px; font-size: 11px; }
+
+/* ============================================================
+   Run Control Section
+   ============================================================ */
+
+#run-control-section {
+  margin-bottom: 14px;
+}
+
+.control-card {
+  background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-base) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.control-card-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.control-status-block {
+  min-width: 92px;
+  padding: 7px 9px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+}
+
+.control-status-label,
+.control-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.control-status-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.control-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.control-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+}
+.control-input::placeholder { color: var(--text-muted); }
+.control-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+
+.control-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.control-actions .btn {
+  width: 100%;
+}
+
+.control-schedule-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.schedule-preview-item {
+  min-width: 0;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.schedule-preview-value {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
 
 /* ============================================================
    Data Card
@@ -659,6 +774,44 @@ header {
 @keyframes toastOut {
   from { opacity: 1; transform: translateY(0) scale(1); }
   to { opacity: 0; transform: translateY(-10px) scale(0.96); }
+}
+
+@media (max-width: 380px) {
+  .control-card-header {
+    flex-direction: column;
+  }
+
+  .control-grid,
+  .control-actions,
+  .control-schedule-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .control-status-block {
+    width: 100%;
+    text-align: left;
+  }
+
+  .data-row,
+  .data-inline,
+  .auto-continue-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .data-label {
+    width: auto;
+  }
+
+  #btn-fetch-email,
+  #btn-toggle-password,
+  .auto-continue-bar .btn {
+    width: 100%;
+  }
+
+  .auto-hint {
+    flex: initial;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

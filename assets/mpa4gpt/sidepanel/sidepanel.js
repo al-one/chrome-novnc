@@ -31,6 +31,20 @@ const inputInbucketHost = document.getElementById('input-inbucket-host');
 const rowInbucketMailbox = document.getElementById('row-inbucket-mailbox');
 const inputInbucketMailbox = document.getElementById('input-inbucket-mailbox');
 const inputRunCount = document.getElementById('input-run-count');
+const inputRunInterval = document.getElementById('input-run-interval');
+const displayScheduleMode = document.getElementById('display-schedule-mode');
+const displayScheduleStatus = document.getElementById('display-schedule-status');
+const displayNextRun = document.getElementById('display-next-run');
+
+const scheduleState = {
+  scheduledRunCount: 1,
+  scheduleIntervalMinutes: 0,
+  scheduleEnabled: false,
+  scheduleNextRunAt: null,
+  scheduleLastStartedAt: null,
+  scheduleLastSkippedAt: null,
+  autoRunPhase: null,
+};
 
 // ============================================================
 // Toast Notifications
@@ -97,6 +111,15 @@ async function restoreState() {
       inputInbucketMailbox.value = state.inbucketMailbox;
     }
 
+    scheduleState.scheduledRunCount = state.scheduledRunCount || 1;
+    scheduleState.scheduleIntervalMinutes = state.scheduleIntervalMinutes || 0;
+    scheduleState.scheduleEnabled = Boolean(state.scheduleEnabled);
+    scheduleState.scheduleNextRunAt = state.scheduleNextRunAt || null;
+    scheduleState.scheduleLastStartedAt = state.scheduleLastStartedAt || null;
+    scheduleState.scheduleLastSkippedAt = state.scheduleLastSkippedAt || null;
+    scheduleState.autoRunPhase = state.autoRunPhase || (state.autoRunning ? 'running' : null);
+    updateScheduleUI();
+
     if (state.stepStatuses) {
       for (const [step, status] of Object.entries(state.stepStatuses)) {
         updateStepUI(Number(step), status);
@@ -125,6 +148,78 @@ function updateMailProviderUI() {
   const useInbucket = selectMailProvider.value === 'inbucket';
   rowInbucketHost.style.display = useInbucket ? '' : 'none';
   rowInbucketMailbox.style.display = useInbucket ? '' : 'none';
+}
+
+function formatScheduleTime(timestamp) {
+  if (!timestamp) return null;
+
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toLocaleTimeString('en-US', {
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatNextRunLabel(timestamp) {
+  return formatScheduleTime(timestamp) || 'Not scheduled';
+}
+
+function updateScheduleUI() {
+  const interval = Number(scheduleState.scheduleIntervalMinutes) || 0;
+  const runCount = Number(scheduleState.scheduledRunCount) || 1;
+  const enabled = Boolean(scheduleState.scheduleEnabled) && interval > 0;
+
+  if (inputRunCount && document.activeElement !== inputRunCount) {
+    inputRunCount.value = String(runCount);
+  }
+  if (inputRunInterval && document.activeElement !== inputRunInterval) {
+    inputRunInterval.value = String(interval);
+  }
+
+  if (displayScheduleMode) {
+    displayScheduleMode.textContent = enabled ? `Every ${interval} min` : 'Manual only';
+  }
+
+  if (displayNextRun) {
+    displayNextRun.textContent = enabled
+      ? formatNextRunLabel(scheduleState.scheduleNextRunAt)
+      : 'Not scheduled';
+  }
+
+  if (!displayScheduleStatus) return;
+
+  if (scheduleState.autoRunPhase === 'running' || scheduleState.autoRunPhase === 'waiting_email') {
+    displayScheduleStatus.textContent = scheduleState.autoRunPhase === 'waiting_email' ? 'Waiting email' : 'Running';
+    return;
+  }
+
+  if (!enabled) {
+    displayScheduleStatus.textContent = 'Idle';
+    return;
+  }
+
+  const lastStartedLabel = formatScheduleTime(scheduleState.scheduleLastStartedAt);
+  const lastSkippedLabel = formatScheduleTime(scheduleState.scheduleLastSkippedAt);
+
+  switch (scheduleState.autoRunPhase) {
+    case 'stopped':
+      displayScheduleStatus.textContent = 'Stopped';
+      break;
+    default:
+      if (lastSkippedLabel && (!lastStartedLabel || scheduleState.scheduleLastSkippedAt >= scheduleState.scheduleLastStartedAt)) {
+        displayScheduleStatus.textContent = `Skipped at ${lastSkippedLabel}`;
+      } else if (lastStartedLabel) {
+        displayScheduleStatus.textContent = `Last ran ${lastStartedLabel}`;
+      } else {
+        displayScheduleStatus.textContent = 'Scheduled';
+      }
+      break;
+  }
 }
 
 // ============================================================
@@ -330,6 +425,7 @@ btnAutoRun.addEventListener('click', async () => {
   const totalRuns = parseInt(inputRunCount.value) || 1;
   btnAutoRun.disabled = true;
   inputRunCount.disabled = true;
+  if (inputRunInterval) inputRunInterval.disabled = true;
   btnAutoRun.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> Running...';
   await chrome.runtime.sendMessage({ type: 'AUTO_RUN', source: 'sidepanel', payload: { totalRuns } });
 });
@@ -360,8 +456,11 @@ btnReset.addEventListener('click', async () => {
     document.querySelectorAll('.step-status').forEach(el => el.textContent = '');
     btnAutoRun.disabled = false;
     inputRunCount.disabled = false;
+    if (inputRunInterval) inputRunInterval.disabled = false;
     btnAutoRun.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Auto';
     autoContinueBar.style.display = 'none';
+    scheduleState.autoRunPhase = null;
+    updateScheduleUI();
     updateStopButtonState(false);
     updateButtonStates();
     updateProgressCounter();
@@ -386,6 +485,47 @@ inputVpsUrl.addEventListener('change', async () => {
   if (vpsUrl) {
     await chrome.runtime.sendMessage({ type: 'SAVE_SETTING', source: 'sidepanel', payload: { vpsUrl } });
   }
+});
+
+async function saveScheduleSettings() {
+  const runCount = parseInt(inputRunCount.value, 10) || 1;
+  const intervalMinutes = parseInt(inputRunInterval.value, 10) || 0;
+
+  if (!inputRunInterval.checkValidity()) {
+    showToast('Interval must be 0 or a multiple of 5 minutes.', 'warn');
+    updateScheduleUI();
+    return;
+  }
+
+  const response = await chrome.runtime.sendMessage({
+    type: 'SAVE_SCHEDULE_SETTINGS',
+    source: 'sidepanel',
+    payload: { scheduledRunCount: runCount, scheduleIntervalMinutes: intervalMinutes },
+  });
+
+  if (response?.error) {
+    showToast(`Failed to save schedule: ${response.error}`, 'error');
+    updateScheduleUI();
+    return;
+  }
+
+  scheduleState.scheduledRunCount = runCount;
+  scheduleState.scheduleIntervalMinutes = intervalMinutes;
+  scheduleState.scheduleEnabled = intervalMinutes > 0;
+  scheduleState.scheduleNextRunAt = response?.scheduleNextRunAt ?? null;
+  scheduleState.scheduleLastStartedAt = response?.scheduleLastStartedAt ?? scheduleState.scheduleLastStartedAt;
+  scheduleState.scheduleLastSkippedAt = response?.scheduleLastSkippedAt ?? scheduleState.scheduleLastSkippedAt;
+  updateScheduleUI();
+  showToast(intervalMinutes > 0 ? `Scheduled every ${intervalMinutes} min` : 'Manual mode enabled', 'success', 2200);
+}
+
+inputRunCount.addEventListener('change', async () => {
+  if (!inputRunInterval) return;
+  await saveScheduleSettings();
+});
+
+inputRunInterval?.addEventListener('change', async () => {
+  await saveScheduleSettings();
 });
 
 inputPassword.addEventListener('change', async () => {
@@ -465,6 +605,8 @@ chrome.runtime.onMessage.addListener((message) => {
       logArea.innerHTML = '';
       document.querySelectorAll('.step-row').forEach(row => row.className = 'step-row');
       document.querySelectorAll('.step-status').forEach(el => el.textContent = '');
+      scheduleState.autoRunPhase = 'running';
+      updateScheduleUI();
       updateStopButtonState(false);
       updateProgressCounter();
       break;
@@ -491,6 +633,7 @@ chrome.runtime.onMessage.addListener((message) => {
     case 'AUTO_RUN_STATUS': {
       const { phase, currentRun, totalRuns } = message.payload;
       const runLabel = totalRuns > 1 ? ` (${currentRun}/${totalRuns})` : '';
+      scheduleState.autoRunPhase = phase;
       switch (phase) {
         case 'waiting_email':
           autoContinueBar.style.display = 'flex';
@@ -504,18 +647,34 @@ chrome.runtime.onMessage.addListener((message) => {
         case 'complete':
           btnAutoRun.disabled = false;
           inputRunCount.disabled = false;
+          if (inputRunInterval) inputRunInterval.disabled = false;
           btnAutoRun.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Auto';
           autoContinueBar.style.display = 'none';
-          updateStopButtonState(false);
           break;
         case 'stopped':
           btnAutoRun.disabled = false;
           inputRunCount.disabled = false;
+          if (inputRunInterval) inputRunInterval.disabled = false;
           btnAutoRun.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> Auto';
           autoContinueBar.style.display = 'none';
           updateStopButtonState(false);
           break;
       }
+      updateScheduleUI();
+      if (phase === 'complete') {
+        updateStopButtonState(false);
+      }
+      break;
+    }
+
+    case 'SCHEDULE_UPDATED': {
+      scheduleState.scheduledRunCount = message.payload.scheduledRunCount || 1;
+      scheduleState.scheduleIntervalMinutes = message.payload.scheduleIntervalMinutes || 0;
+      scheduleState.scheduleEnabled = Boolean(message.payload.scheduleEnabled);
+      scheduleState.scheduleNextRunAt = message.payload.scheduleNextRunAt || null;
+      scheduleState.scheduleLastStartedAt = message.payload.scheduleLastStartedAt || null;
+      scheduleState.scheduleLastSkippedAt = message.payload.scheduleLastSkippedAt || null;
+      updateScheduleUI();
       break;
     }
   }

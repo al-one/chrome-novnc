@@ -41,6 +41,7 @@ loadSeenMailIds();
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'POLL_EMAIL') {
     resetStopState();
+    const batchId = message.payload?.batchId || null;
     handlePollEmail(message.step, message.payload).then(result => {
       sendResponse(result);
     }).catch(err => {
@@ -49,7 +50,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ stopped: true, error: err.message });
         return;
       }
-      reportError(message.step, err.message);
+      reportError(message.step, err.message, batchId);
       sendResponse({ error: err.message });
     });
     return true;
@@ -171,9 +172,11 @@ async function handleMailboxPollEmail(step, payload) {
     subjectFilters = [],
     maxAttempts = 20,
     intervalMs = 3000,
+    batchId = null,
   } = payload || {};
 
   log(`Step ${step}: Starting email poll on Inbucket mailbox page (max ${maxAttempts} attempts)`);
+  reportProgress(step, 'poll-start', batchId);
 
   try {
     await waitForElement('.message-list, .message-list-entry', 15000);
@@ -224,12 +227,14 @@ async function handleMailboxPollEmail(step, payload) {
         `Step ${step}: Code found: ${code} (${source}, sender: ${mail.sender || 'unknown'}, subject: ${(mail.subject || '').slice(0, 60)})`,
         'ok'
       );
+      reportProgress(step, 'code-found', batchId);
 
       return {
         ok: true,
         code,
         emailTimestamp: Date.now(),
         mailId: mail.mailId,
+        batchId,
       };
     }
 

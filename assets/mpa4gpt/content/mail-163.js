@@ -50,6 +50,7 @@ async function persistSeenCodes() {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'POLL_EMAIL') {
     resetStopState();
+    const batchId = message.payload?.batchId || null;
     handlePollEmail(message.step, message.payload).then(result => {
       sendResponse(result);
     }).catch(err => {
@@ -58,7 +59,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ stopped: true, error: err.message });
         return;
       }
-      reportError(message.step, err.message);
+      reportError(message.step, err.message, batchId);
       sendResponse({ error: err.message });
     });
     return true;
@@ -87,9 +88,10 @@ function getCurrentMailIds() {
 // ============================================================
 
 async function handlePollEmail(step, payload) {
-  const { senderFilters, subjectFilters, maxAttempts, intervalMs } = payload;
+  const { senderFilters, subjectFilters, maxAttempts, intervalMs, batchId = null } = payload;
 
   log(`Step ${step}: Starting email poll on 163 Mail (max ${maxAttempts} attempts)`);
+  reportProgress(step, 'poll-start', batchId);
 
   // Click inbox in sidebar to ensure we're in inbox view
   log(`Step ${step}: Waiting for sidebar...`);
@@ -169,13 +171,14 @@ async function handlePollEmail(step, payload) {
           persistSeenCodes();
           const source = useFallback && existingMailIds.has(id) ? 'fallback' : 'new';
           log(`Step ${step}: Code found: ${code} (${source}, subject: ${subject.slice(0, 40)})`, 'ok');
+          reportProgress(step, 'code-found', batchId);
 
           // Delete this email via right-click menu, WAIT for it to finish before returning
           await deleteEmail(item, step);
           // Extra wait to ensure deletion is processed
           await sleep(1000);
 
-          result = { ok: true, code, emailTimestamp: Date.now(), mailId: id };
+          result = { ok: true, code, emailTimestamp: Date.now(), mailId: id, batchId };
         } else if (code && seenCodes.has(code)) {
           log(`Step ${step}: Skipping already-seen code: ${code}`, 'info');
         }

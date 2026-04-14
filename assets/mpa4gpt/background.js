@@ -44,6 +44,7 @@ const DEFAULT_STATE = {
   mailProvider: 'icloud', // 'qq', '163', 'inbucket', or 'icloud'
   inbucketHost: '',
   inbucketMailbox: '',
+  autoRunPhase: null,
 };
 
 async function getState() {
@@ -76,6 +77,57 @@ async function getLocalSettings() {
 
 async function setLocalSettings(updates) {
   await chrome.storage.local.set(updates);
+}
+
+async function clearScheduleAlarm() {
+  await chrome.alarms.clear(SCHEDULE_ALARM_NAME);
+}
+
+async function createScheduleAlarm(intervalMinutes) {
+  await chrome.alarms.create(SCHEDULE_ALARM_NAME, {
+    periodInMinutes: intervalMinutes,
+  });
+}
+
+async function updateNextRunAt(intervalMinutes) {
+  const nextRunAt = intervalMinutes > 0
+    ? Date.now() + intervalMinutes * 60 * 1000
+    : null;
+
+  await setLocalSettings({ scheduleNextRunAt: nextRunAt });
+  return nextRunAt;
+}
+
+async function restoreScheduleFromStorage() {
+  const settings = await getLocalSettings();
+
+  await clearScheduleAlarm();
+
+  if (!settings.scheduleEnabled || settings.scheduleIntervalMinutes <= 0) {
+    await setLocalSettings({ scheduleNextRunAt: null });
+    await broadcastScheduleUpdate({ ...settings, scheduleNextRunAt: null });
+    return { restored: false, scheduleNextRunAt: null };
+  }
+
+  await createScheduleAlarm(settings.scheduleIntervalMinutes);
+  const scheduleNextRunAt = await updateNextRunAt(settings.scheduleIntervalMinutes);
+  await broadcastScheduleUpdate({ ...settings, scheduleNextRunAt });
+  return { restored: true, scheduleNextRunAt };
+}
+
+async function broadcastScheduleUpdate(overrides = {}) {
+  const settings = { ...(await getLocalSettings()), ...overrides };
+  chrome.runtime.sendMessage({
+    type: 'SCHEDULE_UPDATED',
+    payload: {
+      scheduledRunCount: settings.scheduledRunCount,
+      scheduleIntervalMinutes: settings.scheduleIntervalMinutes,
+      scheduleEnabled: settings.scheduleEnabled,
+      scheduleNextRunAt: settings.scheduleNextRunAt,
+      scheduleLastStartedAt: settings.scheduleLastStartedAt,
+      scheduleLastSkippedAt: settings.scheduleLastSkippedAt,
+    },
+  }).catch(() => {});
 }
 
 function broadcastDataUpdate(payload) {
@@ -431,6 +483,28 @@ function isStopError(error) {
   return message === STOP_ERROR_MESSAGE;
 }
 
+function isBatchSupersededError(error) {
+  const message = typeof error === 'string' ? error : error?.message;
+  return message === 'Flow superseded by next scheduled batch.';
+}
+
+function getMessageBatchId(message) {
+  return message?.payload?.batchId || null;
+}
+
+function shouldIgnoreStepMessage(messageBatchId) {
+  if (currentBatchStatus === 'stale') {
+    return true;
+  }
+  return !!(messageBatchId && messageBatchId !== currentBatchId);
+}
+
+function throwIfBatchSuperseded(expectedBatchId) {
+  if (expectedBatchId && currentBatchId !== expectedBatchId) {
+    throw new Error('Flow superseded by next scheduled batch.');
+  }
+}
+
 function clearStopRequest() {
   stopRequested = false;
 }
@@ -560,6 +634,11 @@ async function handleMessage(message, sender) {
     }
 
     case 'STEP_COMPLETE': {
+      const messageBatchId = getMessageBatchId(message);
+      if (shouldIgnoreStepMessage(messageBatchId)) {
+        await addLog(`Ignored STEP_COMPLETE from stale batch ${messageBatchId || 'unknown'}`, 'warn');
+        return { ok: true, ignored: true };
+      }
       if (stopRequested) {
         await setStepStatus(message.step, 'stopped');
         notifyStepError(message.step, STOP_ERROR_MESSAGE);
@@ -572,7 +651,21 @@ async function handleMessage(message, sender) {
       return { ok: true };
     }
 
+    case 'STEP_PROGRESS': {
+      const messageBatchId = getMessageBatchId(message);
+      if (shouldIgnoreStepMessage(messageBatchId)) {
+        return { ok: true, ignored: true };
+      }
+      markBatchProgress(`${message.source}:${message.step}:${message.payload?.detail || 'progress'}`);
+      return { ok: true };
+    }
+
     case 'STEP_ERROR': {
+      const messageBatchId = getMessageBatchId(message);
+      if (shouldIgnoreStepMessage(messageBatchId)) {
+        await addLog(`Ignored STEP_ERROR from stale batch ${messageBatchId || 'unknown'}`, 'warn');
+        return { ok: true, ignored: true };
+      }
       if (isStopError(message.error)) {
         await setStepStatus(message.step, 'stopped');
         await addLog(`Step ${message.step} stopped by user`, 'warn');
@@ -635,6 +728,57 @@ async function handleMessage(message, sender) {
       if (message.payload.inbucketMailbox !== undefined) updates.inbucketMailbox = message.payload.inbucketMailbox;
       await setState(updates);
       return { ok: true };
+    }
+
+    case 'SAVE_SCHEDULE_SETTINGS': {
+      const runCount = Number(message.payload?.scheduledRunCount || 1);
+      const intervalMinutes = Number(message.payload?.scheduleIntervalMinutes || 0);
+
+      if (!Number.isInteger(runCount) || runCount < 1) {
+        return { error: 'Invalid run count' };
+      }
+      if (!Number.isInteger(intervalMinutes) || intervalMinutes < 0 || intervalMinutes % 5 !== 0) {
+        return { error: 'Invalid interval minutes' };
+      }
+
+      const prev = await getLocalSettings();
+      const enableSchedule = intervalMinutes > 0;
+      let scheduleNextRunAt = null;
+
+      if (!enableSchedule) {
+        await clearScheduleAlarm();
+      } else {
+        await clearScheduleAlarm();
+        await createScheduleAlarm(intervalMinutes);
+        scheduleNextRunAt = await updateNextRunAt(intervalMinutes);
+      }
+
+      await setLocalSettings({
+        scheduledRunCount: runCount,
+        scheduleIntervalMinutes: intervalMinutes,
+        scheduleEnabled: enableSchedule,
+        scheduleNextRunAt,
+      });
+
+      if (prev.scheduleIntervalMinutes === 0 && intervalMinutes > 0 && !autoRunActive) {
+        await startAutoBatch({ totalRuns: runCount, trigger: 'schedule' });
+      }
+
+      await broadcastScheduleUpdate({
+        scheduledRunCount: runCount,
+        scheduleIntervalMinutes: intervalMinutes,
+        scheduleEnabled: enableSchedule,
+        scheduleNextRunAt,
+      });
+
+      const latestSettings = await getLocalSettings();
+      return {
+        ok: true,
+        previousInterval: prev.scheduleIntervalMinutes,
+        scheduleNextRunAt,
+        scheduleLastStartedAt: latestSettings.scheduleLastStartedAt,
+        scheduleLastSkippedAt: latestSettings.scheduleLastSkippedAt,
+      };
     }
 
     // Side panel data updates
@@ -763,11 +907,42 @@ async function requestStop() {
 
   await markRunningStepsStopped();
   finishCurrentBatch('stopped');
-  await setState({ autoRunning: false });
+  await setState({ autoRunning: false, autoRunPhase: 'stopped' });
   chrome.runtime.sendMessage({
     type: 'AUTO_RUN_STATUS',
     payload: { phase: 'stopped', currentRun: autoRunCurrentRun, totalRuns: autoRunTotalRuns },
   }).catch(() => {});
+}
+
+async function supersedeCurrentBatch() {
+  currentBatchStatus = 'stale';
+  currentBatchId = null;
+  currentBatchStartedAt = null;
+  currentBatchLastProgressAt = null;
+  currentBatchTrigger = null;
+  stopRequested = true;
+  cancelPendingCommands('Flow superseded by next scheduled batch.');
+
+  if (webNavListener) {
+    chrome.webNavigation.onBeforeNavigate.removeListener(webNavListener);
+    webNavListener = null;
+  }
+
+  await broadcastStopToContentScripts();
+
+  for (const waiter of stepWaiters.values()) {
+    waiter.reject(new Error('Flow superseded by next scheduled batch.'));
+  }
+  stepWaiters.clear();
+
+  if (resumeWaiter) {
+    resumeWaiter.reject(new Error('Flow superseded by next scheduled batch.'));
+    resumeWaiter = null;
+  }
+
+  await markRunningStepsStopped();
+  await addLog('previous batch marked stale and replaced by scheduled batch', 'warn');
+  autoRunActive = false;
 }
 
 // ============================================================
@@ -803,9 +978,14 @@ async function executeStep(step) {
         throw new Error(`Unknown step: ${step}`);
     }
   } catch (err) {
-    if (isStopError(err)) {
+    if (isStopError(err) || isBatchSupersededError(err)) {
       await setStepStatus(step, 'stopped');
-      await addLog(`Step ${step} stopped by user`, 'warn');
+      await addLog(
+        isBatchSupersededError(err)
+          ? `Step ${step} superseded by next scheduled batch`
+          : `Step ${step} stopped by user`,
+        'warn'
+      );
       throw err;
     }
     await setStepStatus(step, 'failed');
@@ -832,7 +1012,7 @@ async function executeStepAndWait(step, delayAfter = 2000) {
 
 async function fetchDuckEmail(options = {}) {
   throwIfStopped();
-  const { generateNew = true } = options;
+  const { generateNew = true, batchId = null } = options;
 
   await addLog(`Duck Mail: Opening autofill settings (${generateNew ? 'generate new' : 'reuse current'})...`);
   await reuseOrCreateTab('duck-mail', DUCK_AUTOFILL_URL);
@@ -840,8 +1020,11 @@ async function fetchDuckEmail(options = {}) {
   const result = await sendToContentScript('duck-mail', {
     type: 'FETCH_DUCK_EMAIL',
     source: 'background',
-    payload: { generateNew },
+    payload: { generateNew, batchId },
   });
+
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
 
   if (result?.error) {
     throw new Error(result.error);
@@ -865,6 +1048,7 @@ async function fetchProviderEmail(provider, options = {}) {
 
 async function fetchICloudEmail(options = {}) {
   throwIfStopped();
+  const { batchId = null } = options;
   await addLog('iCloud Mail: Reading cookies and generating Hide My Email address...');
 
   // Read iCloud cookies — X-APPLE* cookies may live on different domains
@@ -986,6 +1170,9 @@ async function fetchICloudEmail(options = {}) {
       throw new Error(`iCloud reserve returned failure. Response: ${JSON.stringify(reserveData).slice(0, 300)}`);
     }
 
+    throwIfBatchSuperseded(batchId);
+    throwIfStopped();
+
     await setEmailState(hmeEmail);
     await addLog(`iCloud Mail: Reserved ${hmeEmail}`, 'ok');
     result = hmeEmail;
@@ -1026,6 +1213,11 @@ function markBatchProgress(reason = 'progress') {
   });
 }
 
+function isBatchStale(intervalMinutes) {
+  if (!autoRunActive || !currentBatchLastProgressAt || intervalMinutes <= 0) return false;
+  return Date.now() - currentBatchLastProgressAt >= intervalMinutes * 60 * 1000;
+}
+
 function finishCurrentBatch(status) {
   currentBatchStatus = status;
   currentBatchId = null;
@@ -1047,6 +1239,8 @@ async function startAutoBatch({ totalRuns, trigger }) {
   currentBatchLastProgressAt = currentBatchStartedAt;
   currentBatchStatus = 'running';
   currentBatchTrigger = trigger;
+  await setLocalSettings({ scheduleLastStartedAt: currentBatchStartedAt });
+  await broadcastScheduleUpdate({ scheduleLastStartedAt: currentBatchStartedAt });
 
   autoRunLoop(totalRuns, {
     batchId: currentBatchId,
@@ -1061,10 +1255,11 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
   autoRunActive = true;
   autoRunTotalRuns = totalRuns;
   let successfulRuns = 0;
-  currentBatchId = batchContext.batchId || currentBatchId;
+  const loopBatchId = batchContext.batchId || currentBatchId;
+  currentBatchId = loopBatchId;
   currentBatchTrigger = batchContext.trigger || currentBatchTrigger;
   markBatchProgress(`batch-start:${currentBatchTrigger || 'unknown'}`);
-  await setState({ autoRunning: true });
+  await setState({ autoRunning: true, autoRunPhase: 'running' });
 
   for (let run = 1; run <= totalRuns; run++) {
     autoRunCurrentRun = run;
@@ -1078,6 +1273,7 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
       inbucketHost: prevState.inbucketHost,
       inbucketMailbox: prevState.inbucketMailbox,
       autoRunning: true,
+      autoRunPhase: 'running',
     };
     await resetState();
     await setState(keepSettings);
@@ -1100,21 +1296,31 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
       let emailReady = false;
       try {
         const curState = await getState();
-        const providerEmail = await fetchProviderEmail(curState.mailProvider, { generateNew: true });
+        const providerEmail = await fetchProviderEmail(curState.mailProvider, {
+          generateNew: true,
+          batchId: currentBatchId,
+        });
         await addLog(`=== Run ${run}/${totalRuns} — Email ready: ${providerEmail} ===`, 'ok');
         markBatchProgress(`run-${run}-email-ready`);
         emailReady = true;
       } catch (err) {
+        if (currentBatchId !== loopBatchId) {
+          throw err;
+        }
         await addLog(`Email auto-fetch failed: ${err.message}`, 'warn');
       }
 
       if (!emailReady) {
         await addLog(`=== Run ${run}/${totalRuns} PAUSED: Fetch email or paste manually, then continue ===`, 'warn');
+        currentBatchStatus = 'waiting_manual_input';
+        await setState({ autoRunPhase: 'waiting_email' });
         chrome.runtime.sendMessage(status('waiting_email')).catch(() => {});
 
         // Wait for RESUME_AUTO_RUN — sets a promise that resumeAutoRun resolves
         await waitForResume();
-        markBatchProgress(`run-${run}-resumed`);
+        currentBatchStatus = 'running';
+        await setState({ autoRunPhase: 'running' });
+        markBatchProgress(`run-${run}-resume-after-email`);
 
         const resumedState = await getState();
         if (!resumedState.email) {
@@ -1150,14 +1356,22 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
       await addLog(`=== Run ${run}/${totalRuns} COMPLETE! ===`, 'ok');
 
     } catch (err) {
-      if (isStopError(err)) {
-        await addLog(`Run ${run}/${totalRuns} stopped by user`, 'warn');
+      if (currentBatchId !== loopBatchId) {
+        await addLog(`Run ${run}/${totalRuns} terminated because batch ${loopBatchId} was superseded`, 'warn');
       } else {
-        await addLog(`Run ${run}/${totalRuns} failed: ${err.message}`, 'error');
+        if (isStopError(err)) {
+          await addLog(`Run ${run}/${totalRuns} stopped by user`, 'warn');
+        } else {
+          await addLog(`Run ${run}/${totalRuns} failed: ${err.message}`, 'error');
+        }
+        chrome.runtime.sendMessage(status('stopped')).catch(() => {});
       }
-      chrome.runtime.sendMessage(status('stopped')).catch(() => {});
       break; // Stop on error
     }
+  }
+
+  if (currentBatchId !== loopBatchId) {
+    return;
   }
 
   const completedRuns = successfulRuns;
@@ -1176,7 +1390,7 @@ async function autoRunLoop(totalRuns, batchContext = {}) {
     chrome.runtime.sendMessage({ type: 'AUTO_RUN_STATUS', payload: { phase: 'stopped', currentRun: autoRunCurrentRun, totalRuns: autoRunTotalRuns } }).catch(() => {});
     finishCurrentBatch('failed');
   }
-  await setState({ autoRunning: false });
+  await setState({ autoRunning: false, autoRunPhase: currentBatchStatus === 'complete' ? 'complete' : 'stopped' });
   clearStopRequest();
 }
 
@@ -1200,11 +1414,58 @@ async function resumeAutoRun() {
   }
 }
 
+chrome.runtime.onStartup.addListener(() => {
+  restoreScheduleFromStorage().catch((err) => {
+    console.error(LOG_PREFIX, 'Failed to restore schedule on startup:', err);
+  });
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  restoreScheduleFromStorage().catch((err) => {
+    console.error(LOG_PREFIX, 'Failed to restore schedule on install:', err);
+  });
+});
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== SCHEDULE_ALARM_NAME) return;
+
+  const settings = await getLocalSettings();
+  const intervalMinutes = settings.scheduleIntervalMinutes;
+
+  if (!settings.scheduleEnabled || intervalMinutes <= 0) {
+    await setLocalSettings({ scheduleNextRunAt: null });
+    await broadcastScheduleUpdate({ ...settings, scheduleNextRunAt: null });
+    return;
+  }
+
+  const scheduleNextRunAt = await updateNextRunAt(settings.scheduleIntervalMinutes);
+
+  if (!autoRunActive) {
+    await broadcastScheduleUpdate({ ...settings, scheduleNextRunAt });
+    await startAutoBatch({ totalRuns: settings.scheduledRunCount, trigger: 'schedule' });
+    return;
+  }
+
+  if (!isBatchStale(settings.scheduleIntervalMinutes)) {
+    const scheduleLastSkippedAt = Date.now();
+    await setLocalSettings({ scheduleLastSkippedAt });
+    await broadcastScheduleUpdate({ ...settings, scheduleNextRunAt, scheduleLastSkippedAt });
+    await addLog('skip scheduled batch because previous batch is still making progress', 'warn');
+    return;
+  }
+
+  await broadcastScheduleUpdate({ ...settings, scheduleNextRunAt });
+  await supersedeCurrentBatch();
+  clearStopRequest();
+  await startAutoBatch({ totalRuns: settings.scheduledRunCount, trigger: 'schedule' });
+});
+
 // ============================================================
 // Step 1: Get OAuth Link (via vps-panel.js)
 // ============================================================
 
 async function executeStep1(state) {
+  const batchId = currentBatchId;
   if (!state.vpsUrl) {
     throw new Error('No VPS URL configured. Enter VPS address in Side Panel first.');
   }
@@ -1232,11 +1493,14 @@ async function executeStep1(state) {
     throw lastError;
   }
 
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
+
   await sendToContentScript('vps-panel', {
     type: 'EXECUTE_STEP',
     step: 1,
     source: 'background',
-    payload: {},
+    payload: { batchId },
   });
 }
 
@@ -1245,17 +1509,20 @@ async function executeStep1(state) {
 // ============================================================
 
 async function executeStep2(state) {
+  const batchId = currentBatchId;
   if (!state.oauthUrl) {
     throw new Error('No OAuth URL. Complete step 1 first.');
   }
   await addLog(`Step 2: Opening auth URL...`);
   await reuseOrCreateTab('signup-page', state.oauthUrl);
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
 
   await sendToContentScript('signup-page', {
     type: 'EXECUTE_STEP',
     step: 2,
     source: 'background',
-    payload: {},
+    payload: { batchId },
   });
 }
 
@@ -1264,6 +1531,7 @@ async function executeStep2(state) {
 // ============================================================
 
 async function executeStep3(state) {
+  const batchId = currentBatchId;
   if (!state.email) {
     throw new Error('No email address. Paste email in Side Panel first.');
   }
@@ -1279,11 +1547,13 @@ async function executeStep3(state) {
   await addLog(
     `Step 3: Filling email ${state.email}, password ${state.customPassword ? 'customized' : 'generated'} (${password.length} chars)`
   );
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
   await sendToContentScript('signup-page', {
     type: 'EXECUTE_STEP',
     step: 3,
     source: 'background',
-    payload: { email: state.email, password },
+    payload: { email: state.email, password, batchId },
   });
 }
 
@@ -1358,6 +1628,7 @@ async function executeStep4(state) {
     });
   }
 
+  const batchId = currentBatchId;
   const result = await sendToContentScript(mail.source, {
     type: 'POLL_EMAIL',
     step: 4,
@@ -1369,8 +1640,12 @@ async function executeStep4(state) {
       targetEmail: state.email,
       maxAttempts: 100,
       intervalMs: 6000,
+      batchId,
     },
   });
+
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
 
   if (result && result.error) {
     throw new Error(result.error);
@@ -1382,13 +1657,17 @@ async function executeStep4(state) {
 
     // Switch to signup tab and fill code
     const signupTabId = await getTabId('signup-page');
+    throwIfBatchSuperseded(batchId);
+    throwIfStopped();
     if (signupTabId) {
       await chrome.tabs.update(signupTabId, { active: true });
+      throwIfBatchSuperseded(batchId);
+      throwIfStopped();
       await sendToContentScript('signup-page', {
         type: 'FILL_CODE',
         step: 4,
         source: 'background',
-        payload: { code: result.code },
+        payload: { code: result.code, batchId },
       });
     } else {
       throw new Error('Signup page tab was closed. Cannot fill verification code.');
@@ -1401,16 +1680,19 @@ async function executeStep4(state) {
 // ============================================================
 
 async function executeStep5(state) {
+  const batchId = currentBatchId;
   const { firstName, lastName } = generateRandomName();
   const { year, month, day } = generateRandomBirthday();
 
   await addLog(`Step 5: Generated name: ${firstName} ${lastName}, Birthday: ${year}-${month}-${day}`);
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
 
   await sendToContentScript('signup-page', {
     type: 'EXECUTE_STEP',
     step: 5,
     source: 'background',
-    payload: { firstName, lastName, year, month, day },
+    payload: { firstName, lastName, year, month, day, batchId },
   });
 }
 
@@ -1419,6 +1701,7 @@ async function executeStep5(state) {
 // ============================================================
 
 async function executeStep6(state) {
+  const batchId = currentBatchId;
   if (!state.oauthUrl) {
     throw new Error('No OAuth URL. Complete step 1 first.');
   }
@@ -1429,13 +1712,15 @@ async function executeStep6(state) {
   await addLog(`Step 6: Opening OAuth URL for login...`);
   // Reuse the signup-page tab — navigate it to the OAuth URL
   await reuseOrCreateTab('signup-page', state.oauthUrl);
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
 
   // signup-page.js will inject (same auth.openai.com domain) and handle login
   await sendToContentScript('signup-page', {
     type: 'EXECUTE_STEP',
     step: 6,
     source: 'background',
-    payload: { email: state.email, password: state.password },
+    payload: { email: state.email, password: state.password, batchId },
   });
 }
 
@@ -1466,6 +1751,7 @@ async function executeStep7(state) {
     });
   }
 
+  const batchId = currentBatchId;
   const result = await sendToContentScript(mail.source, {
     type: 'POLL_EMAIL',
     step: 7,
@@ -1477,8 +1763,12 @@ async function executeStep7(state) {
       targetEmail: state.email,
       maxAttempts: 100,
       intervalMs: 6000,
+      batchId,
     },
   });
+
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
 
   if (result && result.error) {
     throw new Error(result.error);
@@ -1489,13 +1779,17 @@ async function executeStep7(state) {
 
     // Switch to signup/auth tab and fill code
     const signupTabId = await getTabId('signup-page');
+    throwIfBatchSuperseded(batchId);
+    throwIfStopped();
     if (signupTabId) {
       await chrome.tabs.update(signupTabId, { active: true });
+      throwIfBatchSuperseded(batchId);
+      throwIfStopped();
       await sendToContentScript('signup-page', {
         type: 'FILL_CODE',
         step: 7,
         source: 'background',
-        payload: { code: result.code },
+        payload: { code: result.code, batchId },
       });
     } else {
       throw new Error('Auth page tab was closed. Cannot fill verification code.');
@@ -1510,6 +1804,7 @@ async function executeStep7(state) {
 let webNavListener = null;
 
 async function executeStep8(state) {
+  const batchId = currentBatchId;
   if (!state.oauthUrl) {
     throw new Error('No OAuth URL. Complete step 1 first.');
   }
@@ -1533,6 +1828,12 @@ async function executeStep8(state) {
 
     const timeout = setTimeout(() => {
       cleanupListener();
+      try {
+        throwIfBatchSuperseded(batchId);
+      } catch (err) {
+        reject(err);
+        return;
+      }
       reject(new Error('Localhost redirect not captured after 120s. Step 8 click may have been blocked.'));
     }, 120000);
 
@@ -1544,13 +1845,20 @@ async function executeStep8(state) {
         clearTimeout(timeout);
         if (resolveCaptureWait) resolveCaptureWait(details.url);
 
+        try {
+          throwIfBatchSuperseded(batchId);
+        } catch (err) {
+          reject(err);
+          return;
+        }
+
         setState({ localhostUrl: details.url }).then(() => {
           addLog(`Step 8: Captured localhost URL: ${details.url}`, 'ok');
           setStepStatus(8, 'completed');
           notifyStepComplete(8, { localhostUrl: details.url });
           broadcastDataUpdate({ localhostUrl: details.url });
           resolve();
-        });
+        }).catch(reject);
       }
     };
 
@@ -1573,14 +1881,19 @@ async function executeStep8(state) {
         const clickResult = await sendToContentScript('signup-page', {
           type: 'STEP8_FIND_AND_CLICK',
           source: 'background',
-          payload: {},
+          payload: { batchId },
         });
+
+        throwIfBatchSuperseded(batchId);
+        throwIfStopped();
 
         if (clickResult?.error) {
           throw new Error(clickResult.error);
         }
 
         if (!resolved) {
+          throwIfBatchSuperseded(batchId);
+          throwIfStopped();
           await clickWithDebugger(signupTabId, clickResult?.rect);
           await addLog('Step 8: Debugger click dispatched, waiting for redirect...');
         }
@@ -1598,6 +1911,7 @@ async function executeStep8(state) {
 // ============================================================
 
 async function executeStep9(state) {
+  const batchId = currentBatchId;
   if (!state.localhostUrl) {
     throw new Error('No localhost URL. Complete step 8 first.');
   }
@@ -1633,6 +1947,8 @@ async function executeStep9(state) {
     files: ['content/utils.js', 'content/vps-panel.js'],
   });
   await new Promise(r => setTimeout(r, 1000));
+  throwIfBatchSuperseded(batchId);
+  throwIfStopped();
 
   // Send command directly — bypass queue/ready mechanism
   await addLog(`Step 9: Filling callback URL...`);
@@ -1640,7 +1956,7 @@ async function executeStep9(state) {
     type: 'EXECUTE_STEP',
     step: 9,
     source: 'background',
-    payload: { localhostUrl: state.localhostUrl },
+    payload: { localhostUrl: state.localhostUrl, batchId },
   });
 }
 

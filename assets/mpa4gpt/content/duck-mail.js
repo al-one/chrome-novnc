@@ -21,9 +21,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function fetchDuckEmail(payload = {}) {
-  const { generateNew = true } = payload;
+  const { generateNew = true, batchId = null } = payload;
 
   log(`Duck Mail: ${generateNew ? 'Generating' : 'Reading'} private address...`);
+  reportProgress(0, 'duck-mail-start', batchId);
 
   await waitForElement(
     'input.AutofillSettingsPanel__PrivateDuckAddressValue, button.AutofillSettingsPanel__GeneratorButton',
@@ -52,7 +53,8 @@ async function fetchDuckEmail(payload = {}) {
   const currentEmail = readEmail();
   if (currentEmail && !generateNew) {
     log(`Duck Mail: Found existing address ${currentEmail}`);
-    return { email: currentEmail, generated: false };
+    reportProgress(0, 'duck-mail-email-ready', batchId);
+    return { email: currentEmail, generated: false, batchId };
   }
 
   await humanPause(500, 1300);
@@ -60,7 +62,8 @@ async function fetchDuckEmail(payload = {}) {
   if (!generatorButton) {
     if (currentEmail) {
       log(`Duck Mail: Reusing existing address ${currentEmail}`, 'warn');
-      return { email: currentEmail, generated: false };
+      reportProgress(0, 'duck-mail-email-ready', batchId);
+      return { email: currentEmail, generated: false, batchId };
     }
     throw new Error('Could not find "Generate Private Duck Address" button.');
   }
@@ -70,5 +73,6 @@ async function fetchDuckEmail(payload = {}) {
 
   const nextEmail = await waitForEmailValue(currentEmail);
   log(`Duck Mail: Ready address ${nextEmail}`, 'ok');
-  return { email: nextEmail, generated: true };
+  reportProgress(0, 'duck-mail-email-ready', batchId);
+  return { email: nextEmail, generated: true, batchId };
 }

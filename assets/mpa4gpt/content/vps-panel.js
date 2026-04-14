@@ -29,7 +29,8 @@ console.log('[MultiPage:vps-panel] Content script loaded on', location.href);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'EXECUTE_STEP') {
     resetStopState();
-    handleStep(message.step, message.payload).then(() => {
+    const batchId = message.payload?.batchId || null;
+    handleStep(message.step, message.payload, batchId).then(() => {
       sendResponse({ ok: true });
     }).catch(err => {
       if (isStopError(err)) {
@@ -37,17 +38,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ stopped: true, error: err.message });
         return;
       }
-      reportError(message.step, err.message);
+      reportError(message.step, err.message, batchId);
       sendResponse({ error: err.message });
     });
     return true;
   }
 });
 
-async function handleStep(step, payload) {
+async function handleStep(step, payload, batchId = null) {
   switch (step) {
-    case 1: return await step1_getOAuthLink();
-    case 9: return await step9_vpsVerify(payload);
+    case 1: return await step1_getOAuthLink(batchId);
+    case 9: return await step9_vpsVerify(payload, batchId);
     default:
       throw new Error(`vps-panel.js does not handle step ${step}`);
   }
@@ -57,8 +58,9 @@ async function handleStep(step, payload) {
 // Step 1: Get OAuth Link
 // ============================================================
 
-async function step1_getOAuthLink() {
+async function step1_getOAuthLink(batchId = null) {
   log('Step 1: Waiting for VPS panel to load (auto-login may take a moment)...');
+  reportProgress(1, 'start', batchId);
 
   // The page may start at #/login and auto-redirect to #/oauth.
   // Wait for the Codex OAuth card to appear (up to 30s for auto-login + redirect).
@@ -75,6 +77,7 @@ async function step1_getOAuthLink() {
     );
   }
 
+  reportProgress(1, 'oauth-card-found', batchId);
   if (!loginBtn) {
     throw new Error('Found Codex OAuth card but no login button inside it. URL: ' + location.href);
   }
@@ -82,10 +85,12 @@ async function step1_getOAuthLink() {
   // Check if button is disabled (already clicked / loading)
   if (loginBtn.disabled) {
     log('Step 1: Login button is disabled (already loading), waiting for auth URL...');
+    reportProgress(1, 'login-loading', batchId);
   } else {
     await humanPause(500, 1400);
     simulateClick(loginBtn);
     log('Step 1: Clicked login button, waiting for auth URL...');
+    reportProgress(1, 'login-clicked', batchId);
   }
 
   // Wait for the auth URL to appear in the specific div
@@ -99,20 +104,23 @@ async function step1_getOAuthLink() {
     );
   }
 
+  reportProgress(1, 'oauth-url-found', batchId);
   const oauthUrl = (authUrlEl.textContent || '').trim();
   if (!oauthUrl || !oauthUrl.startsWith('http')) {
     throw new Error(`Invalid OAuth URL found: "${oauthUrl.slice(0, 50)}". Expected URL starting with http.`);
   }
 
   log(`Step 1: OAuth URL obtained: ${oauthUrl.slice(0, 80)}...`, 'ok');
-  reportComplete(1, { oauthUrl });
+  reportComplete(1, { oauthUrl }, batchId);
 }
 
 // ============================================================
 // Step 9: VPS Verify — paste localhost URL and submit
 // ============================================================
 
-async function step9_vpsVerify(payload) {
+async function step9_vpsVerify(payload, batchId = null) {
+  reportProgress(9, 'start', batchId);
+
   // Get localhostUrl from payload (passed directly by background) or fallback to state
   let localhostUrl = payload?.localhostUrl;
   if (!localhostUrl) {
@@ -124,6 +132,7 @@ async function step9_vpsVerify(payload) {
     throw new Error('No localhost URL found. Complete step 8 first.');
   }
   log(`Step 9: Got localhostUrl: ${localhostUrl.slice(0, 60)}...`);
+  reportProgress(9, 'localhost-url-ready', batchId);
 
   log('Step 9: Looking for callback URL input...');
 
@@ -140,9 +149,11 @@ async function step9_vpsVerify(payload) {
     }
   }
 
+  reportProgress(9, 'callback-input-found', batchId);
   await humanPause(600, 1500);
   fillInput(urlInput, localhostUrl);
   log(`Step 9: Filled callback URL: ${localhostUrl.slice(0, 80)}...`);
+  reportProgress(9, 'callback-filled', batchId);
 
   // Find and click "提交回调 URL" button
   let submitBtn = null;
@@ -160,24 +171,28 @@ async function step9_vpsVerify(payload) {
     }
   }
 
+  reportProgress(9, 'submit-button-found', batchId);
   await humanPause(450, 1200);
   simulateClick(submitBtn);
   log('Step 9: Clicked "提交回调 URL", waiting for authentication result...');
+  reportProgress(9, 'submit-clicked', batchId);
 
   // Wait for "认证成功！" status badge to appear
   try {
     await waitForElementByText('.status-badge, [class*="status"]', /认证成功/, 30000);
     log('Step 9: Authentication successful!', 'ok');
+    reportProgress(9, 'auth-success', batchId);
   } catch {
     // Check if there's an error message instead
     const statusEl = document.querySelector('.status-badge, [class*="status"]');
     const statusText = statusEl ? statusEl.textContent : 'unknown';
     if (/成功|success/i.test(statusText)) {
       log('Step 9: Authentication successful!', 'ok');
+      reportProgress(9, 'auth-success', batchId);
     } else {
       log(`Step 9: Status after submit: "${statusText}". May still be processing.`, 'warn');
     }
   }
 
-  reportComplete(9);
+  reportComplete(9, {}, batchId);
 }

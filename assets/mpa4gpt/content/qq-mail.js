@@ -23,6 +23,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return;
     }
     resetStopState();
+    const batchId = message.payload?.batchId || null;
     handlePollEmail(message.step, message.payload).then(result => {
       sendResponse(result);
     }).catch(err => {
@@ -31,7 +32,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ stopped: true, error: err.message });
         return;
       }
-      reportError(message.step, err.message);
+      reportError(message.step, err.message, batchId);
       sendResponse({ error: err.message });
     });
     return true; // async response
@@ -55,9 +56,10 @@ function getCurrentMailIds() {
 // ============================================================
 
 async function handlePollEmail(step, payload) {
-  const { senderFilters, subjectFilters, maxAttempts, intervalMs } = payload;
+  const { senderFilters, subjectFilters, maxAttempts, intervalMs, batchId = null } = payload;
 
   log(`Step ${step}: Starting email poll (max ${maxAttempts} attempts, every ${intervalMs / 1000}s)`);
+  reportProgress(step, 'poll-start', batchId);
 
   // Wait for mail list to load
   try {
@@ -106,7 +108,8 @@ async function handlePollEmail(step, payload) {
         if (code) {
           const source = useFallback && existingMailIds.has(mailId) ? 'fallback-first-match' : 'new';
           log(`Step ${step}: Code found: ${code} (${source}, subject: ${subject.slice(0, 40)})`, 'ok');
-          return { ok: true, code, emailTimestamp: Date.now(), mailId };
+          reportProgress(step, 'code-found', batchId);
+          return { ok: true, code, emailTimestamp: Date.now(), mailId, batchId };
         }
       }
     }

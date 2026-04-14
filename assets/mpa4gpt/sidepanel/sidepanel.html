@@ -18,14 +18,6 @@
       <h1>MultiPage</h1>
     </div>
     <div class="header-btns">
-      <div class="run-group">
-        <input type="number" id="input-run-count" class="run-count-input" value="1" min="1" max="50" title="Number of runs" />
-        <button id="btn-auto-run" class="btn btn-success" title="Run all steps automatically">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-          Auto
-        </button>
-        <button id="btn-stop" class="btn btn-danger" title="Stop current flow" disabled>Stop</button>
-      </div>
       <button id="btn-reset" class="btn btn-ghost" title="Reset all steps">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
@@ -41,6 +33,50 @@
       </button>
     </div>
   </header>
+
+  <section id="run-control-section" class="control-card">
+    <div class="control-card-header">
+      <div>
+        <div class="section-label">Run Control</div>
+        <p class="control-card-note">Configure manual runs and scheduled cadence from one place.</p>
+      </div>
+      <div class="control-status-block">
+        <span class="control-status-label">Schedule</span>
+        <span id="display-schedule-mode" class="control-status-value">Manual only</span>
+      </div>
+    </div>
+
+    <div class="control-grid">
+      <label class="control-field" for="input-run-count">
+        <span class="control-field-label">RunCount</span>
+        <input type="number" id="input-run-count" class="run-count-input control-input" value="1" min="1" max="50" title="Number of runs" />
+      </label>
+
+      <label class="control-field" for="input-run-interval">
+        <span class="control-field-label">Interval(min)</span>
+        <input type="number" id="input-run-interval" class="control-input" value="0" min="0" step="5" placeholder="0" title="Schedule interval in minutes" />
+      </label>
+    </div>
+
+    <div class="control-actions">
+      <button id="btn-auto-run" class="btn btn-success" title="Run all steps automatically">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        Auto
+      </button>
+      <button id="btn-stop" class="btn btn-danger" title="Stop current flow" disabled>Stop</button>
+    </div>
+
+    <div class="control-schedule-preview">
+      <div class="schedule-preview-item">
+        <span class="control-field-label">Status</span>
+        <span id="display-schedule-status" class="schedule-preview-value">Idle</span>
+      </div>
+      <div class="schedule-preview-item">
+        <span class="control-field-label">Next run</span>
+        <span id="display-next-run" class="schedule-preview-value mono">Not scheduled</span>
+      </div>
+    </div>
+  </section>
 
   <section id="data-section">
     <div class="data-card">

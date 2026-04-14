@@ -254,18 +254,35 @@ function reportReady() {
 }
 
 /**
+ * Report step progress.
+ * @param {number} step
+ * @param {string} detail
+ * @param {?string} batchId
+ */
+function reportProgress(step, detail = 'progress', batchId = null) {
+  chrome.runtime.sendMessage({
+    type: 'STEP_PROGRESS',
+    source: SCRIPT_SOURCE,
+    step,
+    payload: { detail, batchId, timestamp: Date.now() },
+    error: null,
+  });
+}
+
+/**
  * Report step completion.
  * @param {number} step
  * @param {Object} data - Step output data
+ * @param {?string} batchId
  */
-function reportComplete(step, data = {}) {
+function reportComplete(step, data = {}, batchId = null) {
   console.log(LOG_PREFIX, `Step ${step} completed`, data);
   log(`Step ${step} completed successfully`, 'ok');
   chrome.runtime.sendMessage({
     type: 'STEP_COMPLETE',
     source: SCRIPT_SOURCE,
     step,
-    payload: data,
+    payload: { ...data, batchId },
     error: null,
   });
 }
@@ -274,15 +291,16 @@ function reportComplete(step, data = {}) {
  * Report step error.
  * @param {number} step
  * @param {string} errorMessage
+ * @param {?string} batchId
  */
-function reportError(step, errorMessage) {
+function reportError(step, errorMessage, batchId = null) {
   console.error(LOG_PREFIX, `Step ${step} failed: ${errorMessage}`);
   log(`Step ${step} failed: ${errorMessage}`, 'error');
   chrome.runtime.sendMessage({
     type: 'STEP_ERROR',
     source: SCRIPT_SOURCE,
     step,
-    payload: {},
+    payload: { batchId },
     error: errorMessage,
   });
 }

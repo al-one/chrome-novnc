@@ -164,9 +164,11 @@ async function handlePollEmail(step, payload) {
     targetEmail = '',
     maxAttempts = 100,
     intervalMs = 6000,
+    batchId = null,
   } = payload || {};
 
   log(`Step ${step}: Starting email poll on iCloud Mail (max ${maxAttempts} attempts)`);
+  reportProgress(step, 'poll-start', batchId);
 
   // Click to open inbox
   await openInbox();
@@ -206,6 +208,7 @@ async function handlePollEmail(step, payload) {
         `Step ${step}: Code found: ${code} (sender: ${mail.sender || 'unknown'}, subject: ${(mail.subject || '').slice(0, 60)})`,
         'ok'
       );
+      reportProgress(step, 'code-found', batchId);
       // Try to delete the verification email
       await deleteMailEntry(mail.entry, step);
 
@@ -214,6 +217,7 @@ async function handlePollEmail(step, payload) {
         code,
         emailTimestamp: Date.now(),
         mailId: mail.mailId,
+        batchId,
       };
     }
 
@@ -238,7 +242,7 @@ async function handlePollEmail(step, payload) {
 
 // Only handle messages in frames that could contain mail UI
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  log(`Received message: ${message.type} ${location.href}`)
+  log(`Received message: ${message.type} ${location.href}`);
   if (message.type === 'POLL_EMAIL') {
     // Check if this frame has mail DOM — skip if not
     const hasMailDom = document.querySelector('.thread-list-item, .mailbox-list-item');
@@ -253,6 +257,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     resetStopState();
+    const batchId = message.payload?.batchId || null;
     handlePollEmail(message.step, message.payload).then(result => {
       sendResponse(result);
     }).catch(err => {
@@ -261,7 +266,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ stopped: true, error: err.message });
         return;
       }
-      reportError(message.step, err.message);
+      reportError(message.step, err.message, batchId);
       sendResponse({ error: err.message });
     });
     return true;

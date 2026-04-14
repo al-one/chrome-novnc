@@ -7,7 +7,8 @@ console.log('[MultiPage:signup-page] Content script loaded on', location.href);
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'EXECUTE_STEP' || message.type === 'FILL_CODE' || message.type === 'STEP8_FIND_AND_CLICK') {
     resetStopState();
-    handleCommand(message).then((result) => {
+    const batchId = message.payload?.batchId || null;
+    handleCommand(message, batchId).then((result) => {
       sendResponse({ ok: true, ...(result || {}) });
     }).catch(err => {
       if (isStopError(err)) {
@@ -22,27 +23,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
-      reportError(message.step, err.message);
+      reportError(message.step, err.message, batchId);
       sendResponse({ error: err.message });
     });
     return true;
   }
 });
 
-async function handleCommand(message) {
+async function handleCommand(message, batchId = null) {
   switch (message.type) {
     case 'EXECUTE_STEP':
       switch (message.step) {
-        case 2: return await step2_clickRegister();
-        case 3: return await step3_fillEmailPassword(message.payload);
-        case 5: return await step5_fillNameBirthday(message.payload);
-        case 6: return await step6_login(message.payload);
+        case 2: return await step2_clickRegister(batchId);
+        case 3: return await step3_fillEmailPassword(message.payload, batchId);
+        case 5: return await step5_fillNameBirthday(message.payload, batchId);
+        case 6: return await step6_login(message.payload, batchId);
         case 8: return await step8_findAndClick();
         default: throw new Error(`signup-page.js does not handle step ${message.step}`);
       }
     case 'FILL_CODE':
       // Step 4 = signup code, Step 7 = login code (same handler)
-      return await fillVerificationCode(message.step, message.payload);
+      return await fillVerificationCode(message.step, message.payload, batchId);
     case 'STEP8_FIND_AND_CLICK':
       return await step8_findAndClick();
   }
@@ -52,8 +53,9 @@ async function handleCommand(message) {
 // Step 2: Click Register
 // ============================================================
 
-async function step2_clickRegister() {
+async function step2_clickRegister(batchId = null) {
   log('Step 2: Looking for Register/Sign up button...');
+  reportProgress(2, 'start', batchId);
 
   let registerBtn = null;
   try {
@@ -74,8 +76,9 @@ async function step2_clickRegister() {
     }
   }
 
+  reportProgress(2, 'button-found', batchId);
   await humanPause(450, 1200);
-  reportComplete(2);
+  reportComplete(2, {}, batchId);
   simulateClick(registerBtn);
   log('Step 2: Clicked Register button');
 }
@@ -84,11 +87,12 @@ async function step2_clickRegister() {
 // Step 3: Fill Email & Password
 // ============================================================
 
-async function step3_fillEmailPassword(payload) {
+async function step3_fillEmailPassword(payload, batchId = null) {
   const { email } = payload;
   if (!email) throw new Error('No email provided. Paste email in Side Panel first.');
 
   log(`Step 3: Filling email: ${email}`);
+  reportProgress(3, 'start', batchId);
 
   // Find email input
   let emailInput = null;
@@ -101,9 +105,11 @@ async function step3_fillEmailPassword(payload) {
     throw new Error('Could not find email input field on signup page. URL: ' + location.href);
   }
 
+  reportProgress(3, 'email-input-found', batchId);
   await humanPause(500, 1400);
   fillInput(emailInput, email);
   log('Step 3: Email filled');
+  reportProgress(3, 'email-filled', batchId);
 
   // Check if password field is on the same page
   let passwordInput = document.querySelector('input[type="password"]');
@@ -111,6 +117,7 @@ async function step3_fillEmailPassword(payload) {
   if (!passwordInput) {
     // Need to submit email first to get to password page
     log('Step 3: No password field yet, submitting email first...');
+    reportProgress(3, 'waiting-password-page', batchId);
     const submitBtn = document.querySelector('button[type="submit"]')
       || await waitForElementByText('button', /continue|next|submit|继续|下一步/i, 5000).catch(() => null);
 
@@ -118,6 +125,7 @@ async function step3_fillEmailPassword(payload) {
       await humanPause(400, 1100);
       simulateClick(submitBtn);
       log('Step 3: Submitted email, waiting for password field...');
+      reportProgress(3, 'email-submitted', batchId);
       await sleep(2000);
     }
 
@@ -129,13 +137,15 @@ async function step3_fillEmailPassword(payload) {
   }
 
   if (!payload.password) throw new Error('No password provided. Step 3 requires a generated password.');
+  reportProgress(3, 'password-input-found', batchId);
   await humanPause(600, 1500);
   fillInput(passwordInput, payload.password);
   log('Step 3: Password filled');
+  reportProgress(3, 'password-filled', batchId);
 
   // Report complete BEFORE submit, because submit causes page navigation
   // which kills the content script connection
-  reportComplete(3, { email });
+  reportComplete(3, { email }, batchId);
 
   // Submit the form (page will navigate away after this)
   await sleep(500);
@@ -153,11 +163,12 @@ async function step3_fillEmailPassword(payload) {
 // Fill Verification Code (used by step 4 and step 7)
 // ============================================================
 
-async function fillVerificationCode(step, payload) {
+async function fillVerificationCode(step, payload, batchId = null) {
   const { code } = payload;
   if (!code) throw new Error('No verification code provided.');
 
   log(`Step ${step}: Filling verification code: ${code}`);
+  reportProgress(step, 'start', batchId);
 
   // Find code input — could be a single input or multiple separate inputs
   let codeInput = null;
@@ -171,22 +182,25 @@ async function fillVerificationCode(step, payload) {
     const singleInputs = document.querySelectorAll('input[maxlength="1"]');
     if (singleInputs.length >= 6) {
       log(`Step ${step}: Found single-digit code inputs, filling individually...`);
+      reportProgress(step, 'single-digit-inputs-found', batchId);
       for (let i = 0; i < 6 && i < singleInputs.length; i++) {
         fillInput(singleInputs[i], code[i]);
         await sleep(100);
       }
       await sleep(1000);
-      reportComplete(step);
+      reportComplete(step, {}, batchId);
       return;
     }
     throw new Error('Could not find verification code input. URL: ' + location.href);
   }
 
+  reportProgress(step, 'code-input-found', batchId);
   fillInput(codeInput, code);
   log(`Step ${step}: Code filled`);
+  reportProgress(step, 'code-filled', batchId);
 
   // Report complete BEFORE submit (page may navigate away)
-  reportComplete(step);
+  reportComplete(step, {}, batchId);
 
   // Submit
   await sleep(500);
@@ -204,11 +218,12 @@ async function fillVerificationCode(step, payload) {
 // Step 6: Login with registered account (on OAuth auth page)
 // ============================================================
 
-async function step6_login(payload) {
+async function step6_login(payload, batchId = null) {
   const { email, password } = payload;
   if (!email) throw new Error('No email provided for login.');
 
   log(`Step 6: Logging in with ${email}...`);
+  reportProgress(6, 'start', batchId);
 
   // Wait for email input on the auth page
   let emailInput = null;
@@ -221,9 +236,11 @@ async function step6_login(payload) {
     throw new Error('Could not find email input on login page. URL: ' + location.href);
   }
 
+  reportProgress(6, 'email-input-found', batchId);
   await humanPause(500, 1400);
   fillInput(emailInput, email);
   log('Step 6: Email filled');
+  reportProgress(6, 'email-filled', batchId);
 
   // Submit email
   await sleep(500);
@@ -233,19 +250,22 @@ async function step6_login(payload) {
     await humanPause(400, 1100);
     simulateClick(submitBtn1);
     log('Step 6: Submitted email');
+    reportProgress(6, 'email-submitted', batchId);
   }
 
   const passwordInput = await waitForLoginPasswordField();
   if (passwordInput) {
     log('Step 6: Password field found, filling password...');
+    reportProgress(6, 'password-input-found', batchId);
     await humanPause(550, 1450);
     fillInput(passwordInput, password);
+    reportProgress(6, 'password-filled', batchId);
 
     await sleep(500);
     const submitBtn2 = document.querySelector('button[type="submit"]')
       || await waitForElementByText('button', /continue|log\s*in|submit|sign\s*in|登录|继续/i, 5000).catch(() => null);
     // Report complete BEFORE submit in case page navigates
-    reportComplete(6, { needsOTP: true });
+    reportComplete(6, { needsOTP: true }, batchId);
 
     if (submitBtn2) {
       await humanPause(450, 1200);
@@ -257,7 +277,8 @@ async function step6_login(payload) {
 
   // No password field — OTP flow
   log('Step 6: No password field. OTP flow or auto-redirect.');
-  reportComplete(6, { needsOTP: true });
+  reportProgress(6, 'otp-flow-no-password', batchId);
+  reportComplete(6, { needsOTP: true }, batchId);
 }
 
 async function waitForLoginPasswordField(timeout = 25000) {
@@ -376,7 +397,7 @@ function getSerializableRect(el) {
 // Step 5: Fill Name & Birthday / Age
 // ============================================================
 
-async function step5_fillNameBirthday(payload) {
+async function step5_fillNameBirthday(payload, batchId = null) {
   const { firstName, lastName, age, year, month, day } = payload;
   if (!firstName || !lastName) throw new Error('No name data provided.');
 
@@ -388,6 +409,7 @@ async function step5_fillNameBirthday(payload) {
 
   const fullName = `${firstName} ${lastName}`;
   log(`Step 5: Filling name: ${fullName}`);
+  reportProgress(5, 'start', batchId);
 
   // Actual DOM structure:
   // - Full name: <input name="name" placeholder="全名" type="text">
@@ -404,9 +426,11 @@ async function step5_fillNameBirthday(payload) {
   } catch {
     throw new Error('Could not find name input. URL: ' + location.href);
   }
+  reportProgress(5, 'name-input-found', batchId);
   await humanPause(500, 1300);
   fillInput(nameInput, fullName);
   log(`Step 5: Name filled: ${fullName}`);
+  reportProgress(5, 'name-filled', batchId);
 
   let birthdayMode = false;
   let ageInput = null;
@@ -440,6 +464,7 @@ async function step5_fillNameBirthday(payload) {
 
     if (yearSpinner && monthSpinner && daySpinner) {
       log('Step 5: Birthday fields detected, filling birthday...');
+      reportProgress(5, 'birthday-fields-found', batchId);
 
       async function setSpinButton(el, value) {
         el.focus();
@@ -468,6 +493,7 @@ async function step5_fillNameBirthday(payload) {
       await humanPause(250, 650);
       await setSpinButton(daySpinner, String(day).padStart(2, '0'));
       log(`Step 5: Birthday filled: ${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+      reportProgress(5, 'birthday-filled', batchId);
     }
 
     const hiddenBirthday = document.querySelector('input[name="birthday"]');
@@ -476,14 +502,17 @@ async function step5_fillNameBirthday(payload) {
       hiddenBirthday.value = dateStr;
       hiddenBirthday.dispatchEvent(new Event('change', { bubbles: true }));
       log(`Step 5: Hidden birthday input set: ${dateStr}`);
+      reportProgress(5, 'hidden-birthday-set', batchId);
     }
   } else if (ageInput) {
     if (resolvedAge == null || Number.isNaN(Number(resolvedAge))) {
       throw new Error('Age field detected, but no age data provided.');
     }
+    reportProgress(5, 'age-input-found', batchId);
     await humanPause(500, 1300);
     fillInput(ageInput, String(resolvedAge));
     log(`Step 5: Age filled: ${resolvedAge}`);
+    reportProgress(5, 'age-filled', batchId);
 
     // Some age-mode pages still submit a hidden birthday field.
     // Keep it aligned with generated data so backend validation won't reject.
@@ -493,6 +522,7 @@ async function step5_fillNameBirthday(payload) {
       hiddenBirthday.value = dateStr;
       hiddenBirthday.dispatchEvent(new Event('change', { bubbles: true }));
       log(`Step 5: Hidden birthday input set (age mode): ${dateStr}`);
+      reportProgress(5, 'hidden-birthday-set', batchId);
     }
   } else {
     throw new Error('Could not find birthday or age input. URL: ' + location.href);
@@ -504,7 +534,7 @@ async function step5_fillNameBirthday(payload) {
     || await waitForElementByText('button', /完成|create|continue|finish|done|agree/i, 5000).catch(() => null);
 
   // Report complete BEFORE submit (page navigates to add-phone after this)
-  reportComplete(5);
+  reportComplete(5, {}, batchId);
 
   if (completeBtn) {
     await humanPause(500, 1300);
