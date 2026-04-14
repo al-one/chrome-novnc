@@ -14,6 +14,8 @@ docs/_static
 docs/_templates
 .gopath/
 .dotcloud
+.worktrees
+.superpowers
 *.test
 bundles/
 .hg/
